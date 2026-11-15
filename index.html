@@ -364,7 +364,7 @@ function introScript() {
     say('林逸尘', '又是那道红光……爹爹留下的这柄剑，也在鞘中微微颤动。', 'sad'),
     { emote: 'player', e: '!', t: .6 },
     say('林逸尘', '对了，村长一早差人来唤我，先去他家看看吧。', 'normal'),
-    () => { hint = { text: '左下方向键行走 · 面向人物按「察」交谈', t: 0 }; },
+    () => { hint = { text: '左半屏拖动行走（推远可跑）· 点右半屏或「察」交谈', t: 0 }; },
   ];
 }
 function elderTalk() {
@@ -535,7 +535,9 @@ let script = null, dialog = null, battle = null, trans = null, fade = null;
 let shake = 0, flashScreen = 0, endT = 0;
 let menuTab = 'status', menuItem = null, shopMsg = null;
 let buttons = [];
-const dpad = { id: null, dir: -1, cx: 86, cy: 0 };
+const joy = { id: null, cx: 0, cy: 0, x: 0, y: 0, dir: -1 };
+const GM = { noEnc: false, god: false, ohk: false };
+let gmFrom = 'title', gmMsg = '', saveFlash = 0, lastSave = -99, lastSaveJson = '';
 const keys = {}; let keyDirs = [];
 const COARSE = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
 let co = null, coWait = 0, DT = 0, T = 0, battleAuto = false, battleFast = false;
@@ -557,13 +559,35 @@ function levelUp(p) {
   p.mhp += g.hp; p.mmp += g.mp; p.atk += g.atk; p.mag += g.mag; p.def += g.def; p.spd += g.spd; p.hp = p.mhp; p.mp = p.mmp;
   const learned = (LEARN[p.id][p.lv] || []).filter(s => !p.skills.includes(s)); p.skills.push(...learned); return learned;
 }
-function save() {
+let cloudDoc = null, cloudSave = null;
+function save(quiet) {
   if (!G || !curMap) return false;
-  G.pos = { tx: player.tx, ty: player.ty, dir: player.dir }; G.map = curMap.id;
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(G)); return true; } catch (e) { return false; }
+  G.pos = { tx: player.tx, ty: player.ty, dir: player.dir }; G.map = curMap.id; G.ts = Date.now();
+  const json = JSON.stringify(G); let ok = false;
+  try { localStorage.setItem(SAVE_KEY, json); ok = true; } catch (e) {}
+  cloudSave = JSON.parse(json);
+  if (cloudDoc) { ok = true; const body = json.replace(/"ts":\d+,?/, ''); if (body !== lastSaveJson) { lastSaveJson = body; cloudDoc.set({ json, ts: G.ts }).catch(() => {}); } }
+  lastSave = T; hasSave = hasSave || ok; if (quiet && ok) saveFlash = 1.6;
+  return ok;
 }
-function loadSave() { try { const s = localStorage.getItem(SAVE_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+function loadSave() {
+  let local = null; try { const s = localStorage.getItem(SAVE_KEY); local = s ? JSON.parse(s) : null; } catch (e) {}
+  if (cloudSave && (!local || (cloudSave.ts || 0) > (local.ts || 0))) return JSON.parse(JSON.stringify(cloudSave));
+  return local;
+}
 let hasSave = !!loadSave();
+(async () => {
+  try {
+    if (!window.claude || !window.claude.use) return;
+    const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+    if (!db || !user) return;
+    const id = await user.id(); if (!id) return;
+    cloudDoc = db.collection('data/users/' + id).doc('save');
+    const snap = await cloudDoc.get();
+    if (snap.exists) { const d = snap.data(); if (d && d.json) { cloudSave = JSON.parse(d.json); hasSave = true; } }
+  } catch (e) {}
+})();
+function wipeSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} cloudSave = null; lastSaveJson = ''; if (cloudDoc) cloudDoc.delete().catch(() => {}); hasSave = false; }
 
 /* =========================================================
    音乐引擎：古筝（Karplus-Strong 拨弦）、竹笛、软垫、太鼓、锣
@@ -578,45 +602,50 @@ function jpSemi(tok) {
   let s = JP[m[2]] + (m[1] === 'b' ? -1 : m[1] === '#' ? 1 : 0);
   for (const c of m[3]) s += c === "'" ? 12 : -12; return s;
 }
-/* 曲谱：简谱记法，每个记号一个八分音符；- 延长，0 休止，' 高八度，, 低八度，b 降半音 */
+/* 曲谱：每个记号是一个八分音符，A4 等为音名，- 延长，. 休止；和弦每小节一个 */
+const NOTE_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+function noteMidi(tok) { const m = /^([A-G])(#|b)?(\d)$/.exec(tok); if (!m) return null; return 12 * (+m[3] + 1) + NOTE_PC[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0); }
+function chordOf(sym) { const m = /^([A-G])(#|b)?(m)?(7)?$/.exec(sym); const pc = NOTE_PC[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0); return { pc: (pc + 12) % 12, minor: !!m[3], sev: !!m[4] }; }
 const SONGS = {
-  title: { bpm: 64, key: 62, lead: 'flute', acc: 'arp', pad: true, lv: .2,
-    mel: `3 - - 5 6 - 1' - | 6 - 5 - 3 - - - | 2 - 3 5 3 - 2 1 | 6, - - - - - 0 0 | 1 - 2 - 3 - 5 6 | 5 - - 3 2 - 3 - | 2 - 1 6, 1 - 2 - | 1 - - - - - 0 0 |
-          5 - 6 1' 2' - 1' 6 | 5 - - - 6 5 3 - | 2 - 3 - 5 - 6 5 | 3 - - - - - 0 0 | 6 - 1' 6 5 - 3 5 | 6 - - 5 3 2 1 - | 2 - 3 2 1 - 6, - | 1 - - - - - - 0`,
-    chords: '1 6 2 6 1 5 2 1 5 1 2 6 6 1 5 1' },
-  village: { bpm: 100, key: 67, lead: 'zheng', acc: 'bounce', lv: .3,
-    mel: `5 6 1' 6 5 - 3 5 | 6 5 3 2 1 - - - | 2 3 5 3 2 1 2 3 | 5 - - - 3 - 0 0 | 6 - 5 6 1' - 6 5 | 3 5 6 5 3 2 1 - | 2 - 3 5 3 2 1 6, | 1 - - - - - 0 0 |
-          3 3 5 6 5 - 3 - | 2 2 3 5 3 - 0 0 | 6 6 5 3 5 6 1' - | 2' 1' 6 5 6 - 0 0 | 5 - 6 1' 6 5 3 5 | 6 - 5 3 2 - 3 - | 5 3 2 1 6, 1 2 3 | 1 - - - - - 0 0`,
-    chords: '1 1 2 5 6 1 2 1 1 5 6 2 1 6 5 1' },
-  forest: { bpm: 76, key: 60, lead: 'flute', acc: 'sparse', pad: true, lv: .19,
-    mel: `6, - 1 2 3 - - - | 2 1 6, - 5, - - - | 6, - 1 2 3 5 3 2 | 3 - - - - - 0 0 | 6 - 5 3 5 - 6 - | 3 2 1 2 3 - - - | 2 - 1 6, 1 - 2 - | 6, - - - - - 0 0 |
-          3 - 5 6 1' - 6 5 | 6 - - - 5 3 2 - | 3 - 2 1 2 - 3 5 | 3 - - - - - 0 0 | 1' - 6 5 6 - 3 - | 5 3 2 3 2 1 6, - | 1 - 2 - 3 - 2 1 | 6, - - - - - - 0`,
-    chords: '6 5 6 3 6 1 2 6 3 6 2 3 1 5 2 6' },
-  cave: { bpm: 56, key: 64, lead: 'flute', acc: 'cave', pad: true, power: true, lv: .14,
-    mel: `1 - - - b2 - 1 - | 5, - - - - - 0 0 | 4 - 5 - b6 - 5 4 | b2 - - - 1 - 0 0 | 5 - b6 - 1' - b6 5 | 4 - - - b2 - - - | 1 - b2 - 4 - b2 - | 1 - - - - - 0 0`,
-    chords: '1 1 4 1 b6 4 b2 1' },
-  battle: { bpm: 150, key: 60, lead: 'both', acc: 'drive', lv: .2,
-    mel: `6 - 6 1' 6 5 3 5 | 6 - - - 3 5 6 1' | 2' - 1' 6 5 - 3 5 | 6 - - - - - 3 2 | 1 - 1 2 3 - 5 3 | 2 - 1 2 3 - - - | 5 - 3 5 6 - 1' 2' | 3' - - - 2' - 1' - |
-          6 - 6 5 6 1' 2' 1' | 6 - 5 - 3 - 5 - | 6 - 6 5 6 1' 3' 2' | 1' - - - 6 - - - | 3 - 5 6 1' - 6 5 | 3 - 5 6 5 - 3 2 | 1 2 3 5 6 - 5 3 | 6 - - - - - 0 0`,
-    chords: '6 6 2 6 1 2 5 3 6 1 6 1 1 3 5 6' },
-  boss: { bpm: 160, key: 64, lead: 'both', acc: 'drive', power: true, boss: true, lv: .2,
-    mel: `1 - 1 b2 1 - 5, - | b6, - 5, - 4, - 5, - | 1 - b2 4 5 - 4 b2 | 1 - - - - - 0 0 | 5 - 5 b6 5 4 b2 1 | b2 - 4 - 5 - - - | b6 - 5 4 5 - 1' - | 7 - b6 - 5 - - - |
-          1' - 7 b6 5 - 4 5 | b6 - 5 4 b2 - 1 - | 4 - 5 b6 1' - b6 5 | 4 - - - b2 - - - | 1 - b2 4 5 b6 5 4 | b2 - 1 b2 4 - 5 - | b6 - 5 4 b2 - 7, - | 1 - - - - - 0 0`,
-    chords: '1 b6 1 1 1 b2 b6 5 1 b6 4 b2 1 b2 b6 1' },
+  title: { bpm: 74, style: 'ballad', lead: 'flute', lv: .17,
+    chords: 'F G Em Am Dm G C C F G Em Am Dm E Am Am',
+    mel: `A4 - C5 - F5 - E5 - | D5 - - - G4 - B4 - | B4 - E5 - G5 - F5 E5 | E5 - - - - - . . | F5 - E5 D5 A4 - D5 - | D5 - C5 B4 G4 - B4 D5 | C5 - - - E5 - G5 - | G5 - - - - - . . |
+          A5 - - G5 F5 - E5 F5 | G5 - - F5 E5 - D5 E5 | E5 - G5 - B5 - A5 G5 | A5 - - - E5 - . . | F5 - E5 F5 A5 - G5 F5 | E5 - D5 E5 G#5 - B5 - | A5 - - - - - G5 E5 | A5 - - - - - . .` },
+  village: { bpm: 112, style: 'pop', lead: 'mix', lv: .2,
+    chords: 'G D Em C G D C D Em C G D C D G G',
+    mel: `D5 - B4 D5 G5 - F#5 G5 | A5 - F#5 - D5 - - - | E5 - G5 - B5 - A5 G5 | E5 - - - C5 - D5 E5 | D5 - G5 - B5 - A5 G5 | F#5 - A5 - D6 - C6 A5 | G5 - E5 - C5 - E5 F#5 | A5 - - - F#5 - . . |
+          B5 - - A5 G5 - E5 - | E5 - G5 - C6 - B5 A5 | B5 - - - G5 - D5 - | F#5 - A5 - D6 - . . | E6 - D6 C6 B5 - A5 G5 | A5 - B5 A5 F#5 - D5 E5 | G5 - - - B5 - A5 F#5 | G5 - - - - - . .` },
+  forest: { bpm: 92, style: 'ambient', lead: 'flute', lv: .15,
+    chords: 'Em C D Bm Em C Am B C D Bm Em Am B Em Em',
+    mel: `B4 - - - E5 - F#5 G5 | G5 - - - E5 - - - | F#5 - A5 - D5 - E5 F#5 | F#5 - - - - - . . | E5 - G5 - B5 - A5 G5 | G5 - E5 - C5 - E5 - | E5 - D5 C5 A4 - C5 - | D#5 - - - F#5 - B4 - |
+          E5 - - - G5 - C6 B5 | A5 - - - F#5 - D5 - | D5 - F#5 - B5 - A5 F#5 | G5 - - - E5 - . . | C6 - B5 A5 E5 - A5 - | B5 - A5 - F#5 - D#5 - | E5 - - - - - B4 - | E5 - - - - - . .` },
+  cave: { bpm: 70, style: 'dark', lead: 'bell', lv: .13,
+    chords: 'Em Em C B Em Em Am B',
+    mel: `E5 - - - - - G5 - | F#5 - - - - - . . | E5 - - - C6 - B5 - | B5 - - - - - . . | G5 - - - A5 - B5 - | C6 - - - B5 - A5 - | A5 - - - C6 - E6 - | D#6 - - - - - . .` },
+  battle: { bpm: 168, style: 'rock', lead: 'synth', lv: .1,
+    chords: 'Am F G Em Am F G E F G Em Am Dm E Am Am',
+    mel: `A4 . C5 E5 A5 - G5 E5 | F5 - E5 C5 A4 - C5 - | D5 - B4 G4 D5 E5 F5 D5 | E5 - - - B4 - E5 G5 | A5 - G5 A5 C6 - B5 A5 | F5 - A5 G5 F5 E5 D5 C5 | D5 - G4 B4 D5 - F5 E5 | E5 - - - G#5 - B5 - |
+          A5 - - C6 B5 A5 G5 F5 | G5 - - B5 A5 G5 F5 D5 | E5 - G5 - B5 - E6 - | C6 - B5 A5 E5 - A5 - | F5 - A5 - D6 - C6 A5 | G#5 - B5 - E6 - D6 B5 | A5 - E5 - C5 - E5 G5 | A5 - - - - - . .` },
+  boss: { bpm: 176, style: 'rock', lead: 'synth2', lv: .1, boss: true,
+    chords: 'Dm Bb C A Dm Bb Gm A Bb C Am Dm Gm A Dm Dm',
+    mel: `D5 - F5 A5 D6 - C6 A5 | Bb5 - A5 F5 D5 - F5 - | E5 - G5 C6 E6 - D6 C6 | C#6 - - - A5 - E5 C#5 | D5 F5 A5 D6 F6 - E6 D6 | D6 - Bb5 - F5 - Bb5 D6 | G5 - Bb5 D6 G6 - F6 D6 | E6 - - - C#6 - A5 - |
+          F6 - - - E6 D6 C6 Bb5 | G5 - - - C6 - E6 - | E6 - D6 C6 A5 - C6 E6 | D6 - - - A5 - D6 F6 | G6 - F6 - D6 - Bb5 - | A5 - C#6 - E6 - G6 - | F6 - E6 - D6 - A5 - | D6 - - - - - . .` },
 };
 for (const k in SONGS) {
   const S = SONGS[k];
   const toks = S.mel.split(/\s+/).filter(t => t && t !== '|');
   S.ev = []; let last = null;
-  toks.forEach((t, u) => {
+  toks.forEach(t => {
     if (t === '-') { if (last) last.len++; S.ev.push(null); }
-    else if (t === '0') { last = null; S.ev.push(null); }
-    else { last = { len: 1, m: S.key + jpSemi(t) }; S.ev.push(last); }
+    else if (t === '.') { last = null; S.ev.push(null); }
+    else { last = { len: 1, m: noteMidi(t) }; S.ev.push(last); }
   });
-  S.total = toks.length;
-  S.ch = S.chords.split(/\s+/).map(t => { const d = t.replace(/[,']/g, ''); const s = jpSemi(d); const minor = !S.power && !d.startsWith('b') && ['2', '3', '6'].includes(d); return { s, third: S.power ? 7 : minor ? 3 : 4 }; });
-  if (S.ch.length * 8 !== S.total) console.warn('乐谱长度不匹配', k, S.total, S.ch.length * 8);
+  S.ch = S.chords.split(/\s+/).map(chordOf);
+  S.total = S.ch.length * 16;
+  if (toks.length * 2 !== S.total) console.warn('乐谱长度不匹配', k, toks.length * 2, S.total);
 }
+const chordRoot = (c, base) => base + ((c.pc - (base % 12) + 12) % 12);
+const triad = (c, base) => { const r = chordRoot(c, base); const n = [r, r + (c.minor ? 3 : 4), r + 7]; if (c.sev) n.push(r + 10); return n; };
 const ksCache = {};
 function ksBuffer(midi) {
   if (ksCache[midi]) return ksCache[midi];
@@ -717,10 +746,61 @@ function initAudio() {
     const conv = AC.createConvolver(); conv.buffer = ir; const wet = AC.createGain(); wet.gain.value = .32;
     musicG.connect(conv); sfxG.connect(conv); conv.connect(wet); wet.connect(comp); revIn = conv;
     noiseBuf = AC.createBuffer(1, sr * 1.5, sr); const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    { const ws = AC.createWaveShaper(), cv2 = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; cv2[i] = Math.tanh(x * 7); } ws.curve = cv2; ws.oversample = '2x'; const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 90; const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3400; const gg = AC.createGain(); gg.gain.value = .16; ws.connect(hp); hp.connect(lp); lp.connect(gg); gg.connect(musicG); gtrIn = ws; }
     if (wantSong) { const w = wantSong; wantSong = null; playSong(w); }
   } catch (e) { AC = null; }
 }
 function setMute(m) { muted = m; try { localStorage.setItem('jxwd_mute', m ? '1' : '0'); } catch (e) {} if (master) master.gain.setTargetAtTime(m ? 0 : .85, AC.currentTime, .05); }
+function piano(t, m, vol, dur) {
+  const f = mf(m), g = AC.createGain(), lp = AC.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.setValueAtTime(Math.min(9000, f * 8), t); lp.frequency.exponentialRampToValueAtTime(Math.max(300, f * 2), t + dur);
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .006); g.gain.exponentialRampToValueAtTime(vol * .3, t + .3); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  [[1, 1, 'triangle'], [2, .35, 'sine'], [3, .12, 'sine'], [4.02, .05, 'sine']].forEach(([k, a, ty]) => { const o = AC.createOscillator(), og = AC.createGain(); o.type = ty; o.frequency.value = f * k; og.gain.value = a; o.connect(og); og.connect(lp); o.start(t); o.stop(t + dur + .05); });
+  lp.connect(g); g.connect(musicG);
+}
+function strings(t, ms, dur, vol, cut = 1700) {
+  ms.forEach(m => [-9, 9].forEach(dt => {
+    const o = AC.createOscillator(), g = AC.createGain(), lp = AC.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.value = mf(m); o.detune.value = dt; lp.type = 'lowpass'; lp.frequency.value = cut;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + Math.min(.45, dur * .3)); g.gain.setValueAtTime(vol, t + dur * .85); g.gain.linearRampToValueAtTime(0, t + dur + .35);
+    o.connect(lp); lp.connect(g); g.connect(musicG); o.start(t); o.stop(t + dur + .4);
+  }));
+}
+let gtrIn = null;
+function guitar(t, r, dur, vol, mute) {
+  [0, 7, 12].forEach(iv => [-7, 7].forEach(dt => {
+    const o = AC.createOscillator(), g = AC.createGain(), lp = AC.createBiquadFilter();
+    o.type = 'sawtooth'; o.frequency.value = mf(r + iv); o.detune.value = dt; lp.type = 'lowpass'; lp.frequency.value = mute ? 650 : 2600;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .004); g.gain.exponentialRampToValueAtTime(vol * (mute ? .04 : .35), t + dur); g.gain.linearRampToValueAtTime(0, t + dur + .05);
+    o.connect(lp); lp.connect(g); g.connect(gtrIn); o.start(t); o.stop(t + dur + .08);
+  }));
+}
+function synthLead(t, m, dur, vol) {
+  const f = mf(m), g = AC.createGain(), lp = AC.createBiquadFilter(), lfo = AC.createOscillator(), lg = AC.createGain();
+  lp.type = 'lowpass'; lp.frequency.value = 4200; lp.Q.value = 1.5;
+  lfo.frequency.value = 5.8; lg.gain.setValueAtTime(0, t); lg.gain.linearRampToValueAtTime(f * .012, t + Math.min(dur, .35)); lfo.connect(lg);
+  [-10, 10].forEach(dt => { const o = AC.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = dt; lg.connect(o.frequency); o.connect(lp); o.start(t); o.stop(t + dur + .15); });
+  const sq = AC.createOscillator(), sg = AC.createGain(); sq.type = 'square'; sq.frequency.value = f / 2; sg.gain.value = .3; sq.connect(sg); sg.connect(lp); sq.start(t); sq.stop(t + dur + .15);
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .012); g.gain.setValueAtTime(vol * .85, t + Math.max(.02, dur - .04)); g.gain.linearRampToValueAtTime(0, t + dur + .1);
+  lfo.start(t); lfo.stop(t + dur + .15); lp.connect(g); g.connect(musicG);
+}
+function brass(t, ms, dur, vol) {
+  ms.forEach(m => [-6, 6].forEach(dt => { const o = AC.createOscillator(), g = AC.createGain(), lp = AC.createBiquadFilter(); o.type = 'sawtooth'; o.frequency.value = mf(m); o.detune.value = dt; lp.type = 'lowpass'; lp.frequency.setValueAtTime(400, t); lp.frequency.exponentialRampToValueAtTime(3200, t + .05); lp.frequency.exponentialRampToValueAtTime(800, t + dur); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .02); g.gain.exponentialRampToValueAtTime(.001, t + dur); o.connect(lp); lp.connect(g); g.connect(musicG); o.start(t); o.stop(t + dur + .02); }));
+}
+function bell(t, m, vol, dur = 2.6) {
+  const f = mf(m);
+  [[1, 1], [2.76, .4], [5.4, .18], [8.93, .07]].forEach(([k, a]) => { const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = f * k; g.gain.setValueAtTime(vol * a, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur / Math.sqrt(k)); o.connect(g); g.connect(musicG); o.start(t); o.stop(t + dur); });
+}
+function kit(t, kind, vol) {
+  const nz = (dur, type, f, q, v, d = musicG) => { const n = AC.createBufferSource(), fl = AC.createBiquadFilter(), g = AC.createGain(); n.buffer = noiseBuf; fl.type = type; fl.frequency.value = f; fl.Q.value = q; g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.001, t + dur); n.connect(fl); fl.connect(g); g.connect(d); n.start(t); n.stop(t + dur + .02); };
+  if (kind === 'kick') { const o = AC.createOscillator(), g = AC.createGain(); o.frequency.setValueAtTime(165, t); o.frequency.exponentialRampToValueAtTime(42, t + .12); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + .35); o.connect(g); g.connect(musicG); o.start(t); o.stop(t + .36); nz(.02, 'highpass', 3000, .7, vol * .3); }
+  else if (kind === 'snare') { nz(.18, 'bandpass', 1900, .6, vol); const o = AC.createOscillator(), g = AC.createGain(); o.type = 'triangle'; o.frequency.setValueAtTime(210, t); o.frequency.exponentialRampToValueAtTime(150, t + .1); g.gain.setValueAtTime(vol * .5, t); g.gain.exponentialRampToValueAtTime(.001, t + .12); o.connect(g); g.connect(musicG); o.start(t); o.stop(t + .13); }
+  else if (kind === 'chh') nz(.035, 'highpass', 8000, .7, vol);
+  else if (kind === 'ohh') nz(.28, 'highpass', 7000, .7, vol);
+  else if (kind === 'crash') nz(1.6, 'highpass', 4500, .5, vol);
+  else if (kind === 'shaker') nz(.05, 'bandpass', 6500, 1.2, vol);
+  else if (kind === 'clap') { for (let i = 0; i < 3; i++) { const tt = t + i * .011; const n = AC.createBufferSource(), fl = AC.createBiquadFilter(), g = AC.createGain(); n.buffer = noiseBuf; fl.type = 'bandpass'; fl.frequency.value = 1500; g.gain.setValueAtTime(vol, tt); g.gain.exponentialRampToValueAtTime(.001, tt + (i === 2 ? .14 : .02)); n.connect(fl); fl.connect(g); g.connect(musicG); n.start(tt); n.stop(tt + .16); } }
+}
 function playSong(name) {
   if (!AC) { wantSong = name; return; }
   if (curSong && curSong.name === name) return;
@@ -737,59 +817,65 @@ function stopSong() {
 }
 function scheduleSong(st) {
   if (curSong !== st || !AC) return;
-  const S = st.S, step = 60 / S.bpm / 2;
-  while (st.next < AC.currentTime + .25) {
-    const u = st.u % S.total, t = st.next;
-    if (u === 0 && st.u > 0) st.loop++;
-    const ev = S.ev[u];
-    if (ev) {
-      const dur = ev.len * step;
-      if (S.lead === 'flute') flute(t, ev.m + 12, dur * .96, S.lv);
-      else if (S.lead === 'zheng') {
-        zheng(t, ev.m, S.lv, { bend: ev.len >= 2 && Math.random() < .25 });
-        if (ev.len >= 4) for (let k = 1; k < ev.len * 2 - 1; k++) zheng(t + k * step / 2, ev.m, S.lv * (.5 - k * .03));
-      } else { flute(t, ev.m + 12, dur * .9, S.lv * .85); zheng(t, ev.m, S.lv * .55); }
-    }
-    accomp(S, t, u, step, st);
-    st.u++; st.next += step;
+  const S = st.S, step = 60 / S.bpm / 4;
+  while (st.next < AC.currentTime + .2) {
+    const u = st.u % S.total, t = st.next, bar = Math.floor(u / 16), b = u % 16;
+    if (b % 2 === 0) { const ev = S.ev[u / 2]; if (ev) playLead(S, t, ev.m, ev.len * 2 * step, bar); }
+    arrange(S, t, u, bar, b, S.ch[bar], step, st.loop);
+    st.u++; st.next += step; if (st.u % S.total === 0) st.loop++;
   }
 }
-function accomp(S, t, u, step, st) {
-  const bar = Math.floor(u / 8), b = u % 8, c = S.ch[bar % S.ch.length], k = S.key, r = c.s, th = c.third;
-  switch (S.acc) {
-    case 'arp': {
-      const iv = [0, 7, 12, th + 12, 19, th + 12, 12, 7][b];
-      zheng(t, k - 12 + r + iv, .085);
-      if (b === 0) { zheng(t, k - 24 + r, .16); if (S.pad) pad(t, [k - 12 + r, k - 12 + r + th, k - 12 + r + 7], step * 8, .022); }
+function playLead(S, t, m, dur, bar) {
+  const v = S.lv;
+  if (S.lead === 'flute') flute(t, m, dur * .95, v);
+  else if (S.lead === 'bell') bell(t, m, v * 1.2, Math.max(1.6, dur * 1.5));
+  else if (S.lead === 'synth') synthLead(t, m, dur * .92, v);
+  else if (S.lead === 'synth2') { synthLead(t, m, dur * .92, v); synthLead(t, m - 12, dur * .92, v * .5); }
+  else if (S.lead === 'mix') { if (bar < 8) { zheng(t, m, v * 1.3, { bend: dur > .4 && Math.random() < .3 }); if (dur > .5) zheng(t + .07, m, v * .45); } else flute(t, m, dur * .95, v * .85); }
+}
+function arrange(S, t, u, bar, b, c, step, loop) {
+  const tri = triad(c, 52), bass = chordRoot(c, 40), sec = bar >= S.ch.length / 2;
+  switch (S.style) {
+    case 'rock': {
+      if (b === 0) { strings(t, triad(c, 57), step * 16, .022, 2200); if (S.boss) { brass(t, triad(c, 64), .45, .05); perc(t, 'taiko', .5); } }
+      if (b % 2 === 0) bassSynth(t, bass + (b % 4 === 2 ? 12 : 0), .13, step * 1.8);
+      if (b === 0 || b === 8) guitar(t, bass, step * 7, .32, false);
+      else if (b % 2 === 0) guitar(t, bass, step * 1.5, .28, true);
+      const kicks = S.boss && sec ? [0, 2, 4, 6, 8, 10, 12, 14] : [0, 6, 8, 11];
+      if (kicks.includes(b)) kit(t, 'kick', .75);
+      if (b === 4 || b === 12) kit(t, 'snare', .5);
+      if (bar % 8 === 7 && b >= 12) kit(t, 'snare', .25 + (b - 12) * .06);
+      if (b % 2 === 0) kit(t, 'chh', b % 4 === 0 ? .09 : .06); if (b === 14) kit(t, 'ohh', .07);
+      if (b === 0 && bar % 4 === 0) kit(t, 'crash', .14);
       break;
     }
-    case 'bounce': {
-      if (b === 0) zheng(t, k - 24 + r, .2); if (b === 4) zheng(t, k - 24 + r + 7, .15);
-      if (b === 2 || b === 6) { [0, th, 7].forEach((iv, i) => zheng(t + i * .012, k - 12 + r + iv, .06)); perc(t, 'wood', .22); }
-      if (b % 2) perc(t, 'hat', .05);
-      if (b === 0 && bar % 4 === 0) perc(t, 'taiko', .25);
+    case 'ballad': {
+      if (b % 2 === 0) { const r = chordRoot(c, 48), th = c.minor ? 3 : 4; const iv = [0, 7, 12, 12 + th, 19, 12 + th, 12, 7][b / 2]; piano(t, r + iv, .075, 1.4); }
+      if (b === 0) { piano(t, chordRoot(c, 36), .12, 3.5); strings(t, triad(c, 55), step * 16, .022, 1500); if (bar % 4 === 0) bell(t, chordRoot(c, 72) + 12, .03, 3); }
+      if (sec && (b === 0 || b === 8)) kit(t, 'kick', .25); if (sec && b === 8) kit(t, 'shaker', .04);
       break;
     }
-    case 'sparse': {
-      if (b === 0) { zheng(t, k - 12 + r, .1); zheng(t, k - 24 + r, .12); if (S.pad) pad(t, [k - 12 + r, k - 12 + r + th, k + r], step * 8, .018); }
-      if (b === 3) zheng(t, k - 12 + r + 7, .08); if (b === 5) zheng(t, k + r, .07); if (b === 6) zheng(t, k + r + th, .05);
+    case 'pop': {
+      if ([0, 6, 8, 12, 14].includes(b)) { const up = b === 6 || b === 14; (up ? [...tri].reverse() : tri).concat(up ? [] : [tri[0] + 12]).forEach((m, i) => zheng(t + i * .012, m, up ? .035 : .05)); }
+      if (b === 0 || b === 8 || b === 6) bassSynth(t, bass, .08, step * 3);
+      if (b === 0 || b === 8) kit(t, 'kick', .4); if (b === 4 || b === 12) kit(t, 'clap', .16);
+      kit(t, 'shaker', b % 2 ? .035 : .018);
+      if (b === 4 || b === 12) tri.forEach(m => piano(t, m + 12, .025, .4));
+      if (b === 0 && bar % 8 === 0) kit(t, 'crash', .06);
       break;
     }
-    case 'cave': {
-      if (b === 0 && bar % 2 === 0) { zheng(t, k - 24 + r, .22, { bend: true }); pad(t, [k - 24 + r, k - 12 + r + 7], step * 16, .03); }
-      if (b === 4) zheng(t, k - 12 + r + 7, .06);
-      if (Math.random() < .07) perc(t + Math.random() * step, 'drip', .08);
+    case 'ambient': {
+      const r = chordRoot(c, 52), th = c.minor ? 3 : 4; const iv = [0, 7, 12, 14, 12 + th, 12, 7, 14, 0, 7, 12, 19, 12 + th, 14, 12, 7][b];
+      piano(t, r + iv, b % 4 === 0 ? .05 : .032, 1.1);
+      if (b === 0) { strings(t, triad(c, 55), step * 16, .02, 1200); piano(t, chordRoot(c, 36), .09, 3); }
+      if (b % 4 === 2) kit(t, 'shaker', .02);
       break;
     }
-    case 'drive': {
-      bassSynth(t, (b % 2 ? k - 12 : k - 24) + r, .12, step * .9);
-      if (b === 0 || b === 4) [0, th, 7, 12].forEach((iv, i) => zheng(t + i * .01, k - 12 + r + iv, .055));
-      if (b === 6) zheng(t, k + 12 + r, .05);
-      if (b === 0 || b === 3 || b === 6) perc(t, 'taiko', b === 0 ? .7 : .5);
-      if (S.boss && b === 7) perc(t, 'taiko', .4);
-      if (b === 2 || b === 6) perc(t, 'wood', .25);
-      perc(t, 'hat', b % 2 ? .05 : .08);
-      if (u === 0) perc(t, 'gong', .3);
+    case 'dark': {
+      if (b === 0 && bar % 2 === 0) { strings(t, [chordRoot(c, 40), chordRoot(c, 40) + 7], step * 32, .035, 700); }
+      if (b === 0) perc(t, 'taiko', .32); if (b === 3) perc(t, 'taiko', .18);
+      if (b === 8) piano(t, chordRoot(c, 40), .07, 2.5);
+      if (Math.random() < .03) perc(t + Math.random() * step, 'drip', .08);
       break;
     }
   }
@@ -1785,19 +1871,29 @@ function paintDeco(g, o, m, d) {
    输入（十字方向键 + 键盘）
    ========================================================= */
 function toLocal(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; }
-function dpadDir(p) { const dx = p.x - dpad.cx, dy = p.y - dpad.cy; if (Math.hypot(dx, dy) < 10) return dpad.dir; return Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 1 : 2) : (dy < 0 ? 3 : 0); }
+function joyDir() {
+  if (joy.id === null) return -1;
+  const dx = joy.x - joy.cx, dy = joy.y - joy.cy, l = Math.hypot(dx, dy);
+  if (l < 12) return -1;
+  const ax = Math.abs(dx), ay = Math.abs(dy); let d;
+  if (joy.dir === 1 || joy.dir === 2) d = ay > ax * 1.3 ? (dy < 0 ? 3 : 0) : (dx < 0 ? 1 : 2);
+  else if (joy.dir === 0 || joy.dir === 3) d = ax > ay * 1.3 ? (dx < 0 ? 1 : 2) : (dy < 0 ? 3 : 0);
+  else d = ax > ay ? (dx < 0 ? 1 : 2) : (dy < 0 ? 3 : 0);
+  joy.dir = d; return d;
+}
+const joyRun = () => joy.id !== null && Math.hypot(joy.x - joy.cx, joy.y - joy.cy) > 46;
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointerdown', e => { e.preventDefault(); initAudio(); try { cv.setPointerCapture(e.pointerId); } catch (_) {} onDown(toLocal(e), e.pointerId); });
-cv.addEventListener('pointermove', e => { if (dpad.id === e.pointerId) dpad.dir = dpadDir(toLocal(e)); });
-const endPtr = e => { if (dpad.id === e.pointerId) { dpad.id = null; dpad.dir = -1; } };
+cv.addEventListener('pointermove', e => { if (joy.id === e.pointerId) { const q = toLocal(e); joy.x = q.x; joy.y = q.y; const dx = q.x - joy.cx, dy = q.y - joy.cy, l = Math.hypot(dx, dy); if (l > 64) { joy.cx += dx * (1 - 64 / l); joy.cy += dy * (1 - 64 / l); } } });
+const endPtr = e => { if (joy.id === e.pointerId) { joy.id = null; joy.dir = -1; } };
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 function onDown(p, id) {
   if (fade || trans) return;
-  if (state === 'map' && Math.hypot(p.x - dpad.cx, p.y - dpad.cy) < 78) { dpad.id = id; dpad.dir = dpadDir(p); if (dpad.dir < 0) dpad.dir = 0; return; }
   for (let i = buttons.length - 1; i >= 0; i--) {
     const b = buttons[i];
     if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) { if (!b.disabled) { sfx('tick'); b.cb(); } return; }
   }
+  if (state === 'map') { if (p.x < W * .55) { joy.id = id; joy.cx = joy.x = p.x; joy.cy = joy.y = p.y; joy.dir = -1; } else interact(); return; }
   if (state === 'dialog') advanceDialog();
   else if (state === 'battle') battleTap(p);
 }
@@ -1813,12 +1909,14 @@ addEventListener('keydown', e => {
     else if (state === 'battle' && battle && battle.phase === 'win') battle.closed = true;
     else if (state === 'title') titleStart(hasSave);
   }
+  if (k === '`' || k === 'g') { if (state === 'gm') closeGM(); else if (state === 'map' || state === 'title' || state === 'menu') openGM(state === 'title' ? 'title' : 'menu'); }
   if (k === 'Escape' || k === 'm' || k === 'x') { if (state === 'map') openMenu(); else if (state === 'menu' || state === 'shop') closeOverlay(); }
 });
 addEventListener('keyup', e => { keys[e.key] = false; if (KEYDIR[e.key] !== undefined) { const d = KEYDIR[e.key]; if (!Object.keys(KEYDIR).some(k => keys[k] && KEYDIR[k] === d)) keyDirs = keyDirs.filter(x => x !== d); } });
-addEventListener('blur', () => { for (const k in keys) keys[k] = false; keyDirs = []; dpad.id = null; dpad.dir = -1; });
-function inputDir() { if (dpad.dir >= 0 && dpad.id !== null) return dpad.dir; return keyDirs.length ? keyDirs[keyDirs.length - 1] : -1; }
-function stopInput() { dpad.id = null; dpad.dir = -1; keyDirs = []; for (const k in keys) keys[k] = false; }
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; keyDirs = []; joy.id = null; joy.dir = -1; });
+function inputDir() { const j = joyDir(); if (j >= 0) return j; return keyDirs.length ? keyDirs[keyDirs.length - 1] : -1; }
+const stepDur = () => (joyRun() || keys.Shift) ? .12 : .17;
+function stopInput() { joy.id = null; joy.dir = -1; keyDirs = []; for (const k in keys) keys[k] = false; }
 
 /* =========================================================
    UI 工具
@@ -1907,7 +2005,7 @@ function refreshNpcs() {
   npcs = curMap.npcs.filter(n => !n.cond || n.cond()).map(n => { const [x, y] = center(n.x, n.y); return { ...n, tx: n.x, ty: n.y, hx: n.x, hy: n.y, x, y, sx: x, sy: y, ex: x, ey: y, t: 0, moving: false, wt: rnd(1, 3), parity: 0 }; });
 }
 function titleStart(cont) {
-  if (cont) { const s = loadSave(); if (!s) return; G = s; fadeTo(() => { state = 'map'; loadMap(G.map, G.pos.tx, G.pos.ty, G.pos.dir); }); }
+  if (cont) { const s = loadSave(); if (!s) return; G = s; delete G.flags.suBusy; delete G.flags.bossBusy; fadeTo(() => { state = 'map'; loadMap(G.map, G.pos.tx, G.pos.ty, G.pos.dir); }); }
   else { fadeTo(() => { newGame(); state = 'map'; loadMap('village', 32, 6, 0); }, () => runScript(introScript())); }
 }
 
@@ -2031,10 +2129,10 @@ function tryStep(d, carry) {
   const [dx, dy] = DIRV[d], nx = player.tx + dx, ny = player.ty + dy;
   const w = warpAt(nx, ny);
   if (w && w.cond && !w.cond()) { runScript(w.deny()); return false; }
-  if (!walkable(nx, ny) && !w || npcAt(nx, ny)) { if (!player.bumpT || player.bumpT <= 0) { sfx('bump'); player.bumpT = .3; } return false; }
+  if (!walkable(nx, ny) && !w) { if (!player.bumpT || player.bumpT <= 0) { sfx('bump'); player.bumpT = .3; } return false; }
   const ox = player.tx, oy = player.ty;
   player.sx = player.x; player.sy = player.y; [player.ex, player.ey] = center(nx, ny);
-  player.tx = nx; player.ty = ny; player.moving = true; player.t = carry / STEP_T; player.parity ^= 1;
+  player.dur = stepDur(); player.tx = nx; player.ty = ny; player.moving = true; player.t = carry / player.dur; player.parity ^= 1;
   if (G.party.length > 1 && (follower.tx !== ox || follower.ty !== oy)) {
     follower.sx = follower.x; follower.sy = follower.y; [follower.ex, follower.ey] = center(ox, oy);
     follower.dir = ox > follower.tx ? 2 : ox < follower.tx ? 1 : oy > follower.ty ? 0 : 3;
@@ -2044,25 +2142,26 @@ function tryStep(d, carry) {
 }
 function onStepEnd() {
   const w = warpAt(player.tx, player.ty);
-  if (w) { stopInput(); fadeTo(() => { loadMap(w.to, w.tx, w.ty, w.dir); save(); }); return true; }
+  if (w) { stopInput(); fadeTo(() => { loadMap(w.to, w.tx, w.ty, w.dir); save(true); }); return true; }
+  if (T - lastSave > 6) save(true);
   for (const tr of curMap.triggers) if (!G.flags[tr.flag] && Math.hypot(player.tx - tr.tx, player.ty - tr.ty) <= tr.r) { runScript(tr.run()); return true; }
   const ch = tileAt(curMap, player.tx, player.ty);
   if (curMap.enc && ENC_TILES.has(ch)) {
     encSteps++;
-    if (encSteps > 5 && Math.random() < .13) { encSteps = 0; stopInput(); sfx('alert'); state = 'alert'; alertT = 0; return true; }
+    if (!GM.noEnc && encSteps > 5 && Math.random() < .13) { encSteps = 0; stopInput(); sfx('alert'); state = 'alert'; alertT = 0; return true; }
   }
   return false;
 }
 function updateMap(dt) {
   if (player.bumpT > 0) player.bumpT -= dt;
   if (player.moving) {
-    player.t += dt / STEP_T;
+    player.t += dt / (player.dur || STEP_T);
     if (player.t >= 1) {
       const carry = (player.t - 1) * STEP_T;
       player.x = player.ex; player.y = player.ey; player.moving = false;
       if (follower.moving) { follower.x = follower.ex; follower.y = follower.ey; follower.moving = false; }
       if (onStepEnd()) return;
-      const d = inputDir(); if (d >= 0) tryStep(d, Math.min(carry, STEP_T * .5));
+      const d = inputDir(); if (d >= 0) tryStep(d, Math.min(carry, .08));
     } else {
       player.x = lerp(player.sx, player.ex, player.t); player.y = lerp(player.sy, player.ey, player.t);
       if (follower.moving) { follower.x = lerp(follower.sx, follower.ex, player.t); follower.y = lerp(follower.sy, follower.ey, player.t); }
@@ -2089,7 +2188,7 @@ function updateMap(dt) {
 function interact() {
   if (player.moving) return;
   const [dx, dy] = DIRV[player.dir], fx = player.tx + dx, fy = player.ty + dy;
-  const n = npcAt(fx, fy);
+  const n = npcAt(fx, fy) || npcAt(player.tx, player.ty);
   if (n) { if (!n.enemy) n.dir = [3, 2, 1, 0][player.dir]; runScript(n.talk()); return; }
   const c = chestAt(fx, fy);
   if (c) {
@@ -2283,8 +2382,13 @@ function drawHUD() {
     bar(x + 48, y + 26, 106, 6, p.hp, p.mhp, '#c0392b', '#ef7b5f'); bar(x + 48, y + 35, 106, 5, p.mp, p.mmp, '#2f6fb0', '#6fb6e8');
   });
   button(W - 66, 10, 56, 36, muted ? '静音' : '音乐', () => setMute(!muted), { size: 14 });
-  dpad.cy = H - 92; dpad.cx = 92;
-  drawDpad();
+  if (joy.id !== null) {
+    ctx.save(); ctx.fillStyle = 'rgba(10,12,18,.35)'; ctx.strokeStyle = 'rgba(214,180,106,.6)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(joy.cx, joy.cy, 52, 0, 7); ctx.fill(); ctx.stroke();
+    const dx = joy.x - joy.cx, dy = joy.y - joy.cy, l = Math.hypot(dx, dy), k = l > 46 ? 46 / l : 1;
+    const kg = ctx.createRadialGradient(joy.cx + dx * k - 6, joy.cy + dy * k - 6, 2, joy.cx + dx * k, joy.cy + dy * k, 22); kg.addColorStop(0, joyRun() ? '#f0d48a' : '#f3ead8'); kg.addColorStop(1, joyRun() ? '#a8803a' : '#9a9080');
+    ctx.fillStyle = kg; circ(ctx, joy.cx + dx * k, joy.cy + dy * k, 21); ctx.restore();
+  } else if (COARSE) { ctx.save(); ctx.globalAlpha = .3; ctx.strokeStyle = '#f3ead8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(96, H - 96, 52, 0, 7); ctx.stroke(); ctx.fillStyle = '#f3ead8'; circ(ctx, 96, H - 96, 18); ctx.restore(); }
+  if (saveFlash > 0) { ctx.save(); ctx.globalAlpha = Math.min(1, saveFlash); text('✓ 已自动存档', W - 14, 62, 12, '#bfe8c0', 'right'); ctx.restore(); }
   roundBtn(W - 72, H - 80, 36, '察', interact);
   roundBtn(W - 152, H - 46, 25, '菜单', openMenu, { size: 15, font: FB, c1: 'rgba(60,70,92,.95)', c2: 'rgba(24,28,40,.95)' });
   if (hint && hint.t < 8) {
@@ -2392,8 +2496,9 @@ function drawMenu() {
   } else {
     button(cx + 16, py + 24, 220, 48, '保存进度', () => { shopMsg = save() ? '进度已保存。' : '保存失败（浏览器禁止了存储）。'; hasSave = true; }, { primary: true });
     button(cx + 16, py + 84, 220, 48, muted ? '开启声音' : '关闭声音', () => setMute(!muted));
+    button(cx + 16, py + 204, 220, 48, 'GM 测试面板', () => openGM('menu'));
     button(cx + 16, py + 144, 220, 48, '回到标题', () => { fadeTo(() => { state = 'title'; stopSong(); playSong('title'); amb = []; }); });
-    ['操作说明', '· 左下十字键：一格一格行走', '· 「察」：面向人物交谈、开宝箱、查看', '· 草丛与洞穴中会遭遇妖怪', '· 键盘：方向键/WASD，空格确认，M 菜单'].forEach((l, i) => text(l, cx + 260, py + 44 + i * 26, i ? 14 : 16, i ? '#e6dcc6' : '#e8c77a', 'left', FB, !i));
+    ['操作说明', '· 左半屏拖动：行走，推远可跑步', '· 点右半屏 / 「察」：交谈、开宝箱、查看', '· 草丛与洞穴中会遭遇妖怪', '· 键盘：方向键/WASD（Shift 跑步），空格确认，M 菜单'].forEach((l, i) => text(l, cx + 260, py + 44 + i * 26, i ? 14 : 16, i ? '#e6dcc6' : '#e8c77a', 'left', FB, !i));
     const tm = Math.floor(G.time); text(`游戏时间 ${Math.floor(tm / 3600)}:${String(Math.floor(tm / 60) % 60).padStart(2, '0')}:${String(tm % 60).padStart(2, '0')}`, cx + 260, py + 200, 13, '#bba67a');
     if (shopMsg) text(shopMsg, cx + 16, py + 230, 15, '#9fe0b0');
   }
@@ -2425,6 +2530,40 @@ function drawShop() {
   button(px + pw - 116, py + ph - 56, 96, 42, '离开', closeOverlay, { primary: true });
 }
 
+
+/* =========================================================
+   GM 测试面板
+   ========================================================= */
+function openGM(from) { stopInput(); gmFrom = from; gmMsg = ''; state = 'gm'; }
+function closeGM() { state = gmFrom === 'title' || !G || !curMap ? 'title' : 'map'; }
+function gmEnsure() { if (!G) { newGame(); G.flags.quest = true; } if (!curMap) { loadMap('village', 32, 6, 0); } }
+function gmGo(map, tx, ty, dir) { gmEnsure(); script = null; dialog = null; fadeTo(() => { state = 'map'; loadMap(map, tx, ty, dir); }); gmMsg = ''; }
+function gmBattle(ids, boss) { gmEnsure(); script = null; dialog = null; state = 'map'; healAll(); startBattle(ids, boss ? { boss: true, noEscape: true } : {}); }
+function gmAll(fn, msg) { gmEnsure(); fn(); gmMsg = msg; sfx('chest'); }
+function drawGM() {
+  ctx.fillStyle = 'rgba(5,6,10,.7)'; ctx.fillRect(0, 0, W, H);
+  const px = 16, py = 12, pw = W - 32, ph = H - 24;
+  panel(px, py, pw, ph, .96);
+  text('GM 测试面板', px + 22, py + 36, 26, '#e8c77a', 'left', FT);
+  text(G ? `等级 ${G.party[0].lv} · 铜钱 ${G.gold} · ${curMap ? curMap.name : '未进入地图'}` : '尚未开始游戏（点任意项会自动开新档）', px + 190, py + 32, 13, '#bba67a');
+  button(px + pw - 104, py + 12, 88, 34, '返回', closeGM, { primary: true, size: 15 });
+  const rows = [
+    ['传送', [['青石镇', () => gmGo('village', 32, 6, 0)], ['紫竹林', () => gmGo('forest', 2, 10, 2)], ['竹林深处', () => gmGo('forest', 22, 10, 2)], ['幽冥洞', () => gmGo('cave', 2, 18, 3)], ['狐王洞前', () => gmGo('cave', 29, 8, 3)]]],
+    ['角色', [['升 1 级', () => gmAll(() => G.party.forEach(p => levelUp(p)), '全员升 1 级')], ['升到 8 级', () => gmAll(() => G.party.forEach(p => { while (p.lv < 8) levelUp(p); }), '全员升到 8 级')], ['回满状态', () => gmAll(healAll, '状态已回满')], ['铜钱 +1000', () => gmAll(() => G.gold += 1000, '铜钱 +1000')], ['苏青瑶入队', () => gmAll(() => { joinSu(); G.flags.metSu = true; G.flags.quest = true; if (curMap) { refreshNpcs(); placeFollower(); } }, '苏青瑶已入队')]]],
+    ['物品', [['全部道具 ×9', () => gmAll(() => ['jinchuang', 'huiling', 'jiedu', 'huanhun', 'jiuzhuan'].forEach(k => G.items[k] = 9), '道具各 9 个')], ['学会全部仙术', () => gmAll(() => G.party.forEach(p => { Object.values(LEARN[p.id]).flat().forEach(s => { if (!p.skills.includes(s)) p.skills.push(s); }); }), '已学会全部仙术')], ['全部装备', () => gmAll(() => EQUIPS.forEach(e => { if (!G.bought[e.id]) { G.bought[e.id] = true; const q = G.party.find(x => x.id === e.who); if (q) q[e.stat] += e.v; } }), '已获得全部装备')], ['保存进度', () => { gmEnsure(); gmMsg = save() ? '已保存' : '保存失败'; }], ['删除存档', () => { wipeSave(); gmMsg = '存档已删除'; }]]],
+    ['开关', [[`遇敌：${GM.noEnc ? '关' : '开'}`, () => { GM.noEnc = !GM.noEnc; }], [`无敌：${GM.god ? '开' : '关'}`, () => { GM.god = !GM.god; }], [`秒杀：${GM.ohk ? '开' : '关'}`, () => { GM.ohk = !GM.ohk; }], [`二倍速：${battleFast ? '开' : '关'}`, () => { battleFast = !battleFast; }], [`自动战斗：${battleAuto ? '开' : '关'}`, () => { battleAuto = !battleAuto; }]]],
+    ['剧情', [['完成村长委托', () => gmAll(() => G.flags.quest = true, '已接到村长委托')], ['重置苏青瑶', () => gmAll(() => { G.party = G.party.filter(p => p.id !== 'su'); delete G.flags.metSu; delete G.flags.suBusy; if (curMap) refreshNpcs(); }, '苏青瑶事件已重置')], ['重置狐王', () => gmAll(() => { delete G.flags.bossDead; delete G.flags.bossBusy; if (curMap) refreshNpcs(); }, '狐王已复活')], ['看结局', () => { gmEnsure(); fadeTo(() => { state = 'ending'; endT = 0; playSong('title'); }); }], ['回到标题', () => fadeTo(() => { state = 'title'; playSong('title'); })]]],
+    ['战斗', [['竹林小怪', () => gmBattle(pick(GROUPS.forest))], ['竹林三连', () => gmBattle(['zhujing', 'shanxiao', 'duzhu'])], ['洞穴小怪', () => gmBattle(pick(GROUPS.cave))], ['洞穴三连', () => gmBattle(['bianfu', 'kulou', 'huohu'])], ['狐王战', () => gmBattle(['boss'], true)]]],
+  ];
+  const lx = px + 22, bx0 = px + 84, bw = (pw - 84 - 30 - 4 * 8) / 5, bh = 36;
+  rows.forEach(([label, items], r) => {
+    const y = py + 58 + r * 46;
+    text(label, lx, y + 24, 15, '#e8c77a', 'left', FB, true);
+    items.forEach(([l, cb], i) => button(bx0 + i * (bw + 8), y, bw, bh, l, () => { cb(); }, { size: 14, active: /：开/.test(l) }));
+  });
+  if (gmMsg) text(gmMsg, px + pw / 2, py + ph - 14, 14, '#9fe0b0', 'center');
+}
+
 /* =========================================================
    战斗系统
    ========================================================= */
@@ -2449,9 +2588,11 @@ const aliveEn = () => battle.en.filter(e => e.alive);
 const aliveParty = () => G.party.filter(p => p.hp > 0);
 function checkEnd() { if (!aliveEn().length) return 'win'; if (!aliveParty().length) return 'lose'; return null; }
 function* battleMain() {
-  yield .5;
-  battle.msg = battle.en.length > 1 ? `${battle.en[0].name}等妖物出现了！` : `${battle.en[0].name}出现了！`;
-  yield 1.0; battle.msg = '';
+  yield .15;
+  const boss = battle.en.find(e => e.boss);
+  battle.intro = { t: 0, dur: boss ? 2.2 : 1.35, boss: !!boss, name: boss ? boss.name : [...new Set(battle.en.map(e => e.name))].join(' · ') };
+  sfx('cutin'); if (boss) { yield .5; shake = 9; flashScreen = .35; sfx('roar'); yield 1.7; } else yield 1.35;
+  battle.intro = null;
   while (true) {
     const order = [...aliveParty(), ...aliveEn()].map(a => ({ a, s: a.spd * rnd(.8, 1.2) })).sort((p, q) => q.s - p.s).map(o => o.a);
     for (const a of order) {
@@ -2459,6 +2600,7 @@ function* battleMain() {
       if (a.isEnemy ? !a.alive : a.hp <= 0) continue;
       if (a.isEnemy) yield* enemyTurn(a);
       else {
+        if (GM.god) a.poison = 0;
         if (a.poison > 0) {
           const d = Math.max(1, Math.round(a.mhp * .07)); a.poison--; battle.cur = a;
           const p = posOf(a); sfx('poison'); a.hp = Math.max(0, a.hp - d); a.flash = .3;
@@ -2489,7 +2631,7 @@ function autoChoice(a) {
   }
   return { type: 'attack', target: ens.reduce((m, e) => e.hp < m.hp ? e : m, ens[0]) };
 }
-function calcDmg(a, t, power, kind) { const st = kind === 'mag' ? (a.mag || a.atk) : a.atk; let d = (st * power - t.def * .6) * rnd(.9, 1.1); if (t.defend) d *= .5; return Math.max(1, Math.round(d)); }
+function calcDmg(a, t, power, kind) { if (GM.god && !t.isEnemy) return 0; if (GM.ohk && t.isEnemy) return t.hp; const st = kind === 'mag' ? (a.mag || a.atk) : a.atk; let d = (st * power - t.def * .6) * rnd(.9, 1.1); if (t.defend) d *= .5; return Math.max(1, Math.round(d)); }
 function addText(x, y, s, color, size = 26) { battle.texts.push({ x, y, s, color, t: 0, size }); }
 function addP(p) { battle.parts.push(mkP(p)); }
 let hitStop = 0;
@@ -2643,7 +2785,7 @@ function* battleEnd(res) {
 function finishBattle(won) {
   const opts = battle.opts;
   G.party.forEach(p => { p.poison = 0; });
-  fadeTo(() => { state = 'map'; battle = null; co = null; stopSong(); playSong(curMap.bgm); }, () => { if (won && opts.onWin) opts.onWin(); });
+  fadeTo(() => { state = 'map'; battle = null; co = null; stopSong(); playSong(curMap.bgm); save(true); }, () => { if (won && opts.onWin) opts.onWin(); });
 }
 function battleTap(p) {
   if (!battle) return;
@@ -2669,6 +2811,7 @@ function updateBattle(dt) {
   if (b.dim > 0) b.dim = Math.max(0, b.dim - d2 * .9);
   if (b.zoom) { b.zoom.t -= d2; if (b.zoom.t <= 0) b.zoom = null; }
   if (b.cutin) b.cutin.t += d2;
+  if (b.intro) b.intro.t += d2;
   [...b.en, ...G.party].forEach(c => {
     if (c.flash > 0) c.flash -= d2; if (c.cast > 0) c.cast -= d2; if (c.kb) { c.kb *= Math.pow(.001, d2); if (Math.abs(c.kb) < .2) c.kb = 0; }
     if (c.poseT > 0) { c.poseT -= d2; if (c.poseT <= 0) c.pose = null; }
@@ -2759,9 +2902,44 @@ function drawBattle() {
   if (b.banner) { const a = Math.min(1, b.banner.t * 5, (1.3 - b.banner.t) * 4); ctx.save(); ctx.globalAlpha = clamp(a, 0, 1); const by = boss ? 58 : 18; const gr = ctx.createLinearGradient(W / 2 - 180, 0, W / 2 + 180, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(.5, 'rgba(0,0,0,.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = gr; ctx.fillRect(W / 2 - 180, by, 360, 50); ctx.fillStyle = 'rgba(214,180,106,.7)'; ctx.fillRect(W / 2 - 110, by + 2, 220, 1); ctx.fillRect(W / 2 - 110, by + 47, 220, 1); text(b.banner.text, W / 2, by + 38, 32, '#f3ead8', 'center', FT); ctx.restore(); }
   if (b.msg) { panel(W / 2 - 160, 120, 320, 50, .88); text(b.msg, W / 2, 152, 18, '#f3ead8', 'center'); }
   drawBattlePanel();
+  if (b.intro) drawIntro(b.intro);
   if (b.cutin) drawCutin(b.cutin);
   if (b.phase === 'win') drawWin();
   if (b.phase === 'lose') { ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(0, 0, W, H); text('全军覆没……', W / 2, H / 2, 40, '#c8a0a0', 'center', FT); }
+}
+function drawIntro(I) {
+  const k = I.t / I.dur, out = k > .82 ? (1 - k) / .18 : 1, a = clamp(Math.min(1, k * 8) * out, 0, 1);
+  const lb = 54 * easeOut(Math.min(1, k * 5)) * out;
+  ctx.save();
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, lb); ctx.fillRect(0, H - lb, W, lb);
+  const hgt = 128 * easeOut(Math.min(1, k * 6)) * out, cy = 186, y0 = cy - hgt / 2;
+  if (hgt > 2) {
+    ctx.save(); ctx.beginPath(); ctx.rect(0, y0, W, hgt); ctx.clip();
+    const gr = ctx.createLinearGradient(0, y0, 0, y0 + hgt); gr.addColorStop(0, I.boss ? '#1a0606' : '#06101a'); gr.addColorStop(.5, I.boss ? '#3a0c08' : '#10243a'); gr.addColorStop(1, I.boss ? '#1a0606' : '#06101a');
+    ctx.fillStyle = gr; ctx.fillRect(0, y0, W, hgt);
+    ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = I.boss ? 'rgba(255,120,60,.35)' : 'rgba(140,200,255,.3)'; ctx.lineWidth = 2;
+    for (let i = 0; i < 22; i++) { const yy = y0 + ((i * 29) % Math.max(1, hgt)), x = ((T * 1800 + i * 211) % (W + 400)) - 200; line(ctx, x, yy, x + 160, yy); }
+    ctx.globalCompositeOperation = 'source-over';
+    const slide = easeOut(clamp((k - .05) * 3, 0, 1));
+    if (I.boss) {
+      const im = ART.foxking;
+      if (im) { const h2 = 250, w2 = h2 * im.width / im.height; ctx.drawImage(im, lerp(W + 40, W * .72, slide) - w2 / 2, cy - 90, w2, h2); }
+      const tx = lerp(-200, W * .34, slide);
+      ctx.font = `66px ${FT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(I.name, tx, cy - 8);
+      const tg = ctx.createLinearGradient(0, cy - 40, 0, cy + 24); tg.addColorStop(0, '#fff0d0'); tg.addColorStop(1, '#ff7a3a'); ctx.fillStyle = tg; ctx.fillText(I.name, tx, cy - 8);
+      text('— 幽冥洞之主 · 千年赤炎妖狐 —', tx, cy + 44, 15, '#ffcfae', 'center');
+    } else {
+      const imgs = G.party.map(p => artBust(p.look, 'determined')).filter(Boolean);
+      imgs.forEach((im, i) => faceCrop(im, G.party[i].look, lerp(-260, W * .06 + i * 120, slide), cy - 60, 120, 120, .85));
+      const ens = [...new Set(battle.en.map(e => e.draw))];
+      ens.forEach((d, i) => { const im = enemyImg(d); if (!im) return; const h2 = 104, w2 = Math.min(170, h2 * im.width / im.height); ctx.drawImage(im, lerp(W + 200, W * .62 + i * 120, slide), cy - 52, w2, w2 / (im.width / im.height)); });
+      ctx.font = `72px ${FT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(0,0,0,.8)'; const sc2 = 1 + Math.max(0, .5 - k * 2); ctx.save(); ctx.translate(W / 2, cy); ctx.scale(sc2, sc2); ctx.strokeText('VS', 0, 0); const tg = ctx.createLinearGradient(0, -36, 0, 36); tg.addColorStop(0, '#ffffff'); tg.addColorStop(1, '#f0c050'); ctx.fillStyle = tg; ctx.fillText('VS', 0, 0); ctx.restore();
+    }
+    ctx.restore();
+    ctx.strokeStyle = I.boss ? '#ff8a4a' : '#d6b46a'; ctx.lineWidth = 2; line(ctx, 0, y0, W, y0); line(ctx, 0, y0 + hgt, W, y0 + hgt);
+  }
+  if (!I.boss) { ctx.globalAlpha = a; text(I.name + ' 出现了！', W / 2, H - lb - 14 + (lb ? 0 : 0), 16, '#f3ead8', 'center', FB, true); }
+  ctx.restore();
 }
 function drawCutin(c) {
   const k = c.t / .95, a = clamp(k < .1 ? k / .1 : k > .86 ? (1 - k) / .14 : 1, 0, 1);
@@ -2957,6 +3135,7 @@ function drawTitle() {
   button(bx, by, 200, 48, '新的旅程', () => titleStart(false), { primary: true, size: 20, font: FT });
   button(bx, by + 60, 200, 48, '继续旅程', () => titleStart(true), { disabled: !hasSave, size: 20, font: FT });
   button(W - 72, 12, 60, 34, muted ? '静音' : '音乐', () => setMute(!muted), { size: 14 });
+  button(W - 72, H - 46, 60, 34, 'GM', () => openGM('title'), { size: 14 });
   text('建议开启声音 · 横屏游玩', tx, H - 18, 12, 'rgba(243,234,216,.5)', 'center');
 }
 function drawEnding() {
@@ -3002,6 +3181,7 @@ function update(dt) {
   if (flashScreen > 0) flashScreen = Math.max(0, flashScreen - dt * 2);
   if (mapBanner) mapBanner.t += dt;
   if (hint) hint.t += dt;
+  if (saveFlash > 0) saveFlash -= dt;
   if (state === 'ending') endT += dt;
   switch (state) {
     case 'map': if (!fade) updateMap(dt); updateWorldFx(dt); updateAmb(dt, curMap.amb); break;
@@ -3031,6 +3211,7 @@ function render() {
     case 'battle': if (battle) drawBattle(); break;
     case 'gameover': drawGameOver(); break;
     case 'ending': drawEnding(); break;
+    case 'gm': if (G && curMap && gmFrom !== 'title') mapScene(); else drawTitle(); buttons = []; drawGM(); break;
   }
   if (fade) { ctx.fillStyle = `rgba(5,6,9,${clamp(fade.a, 0, 1)})`; ctx.fillRect(0, 0, W, H); }
 }
@@ -3058,7 +3239,8 @@ function resize() {
 $('rotateGo').addEventListener('click', () => { rotateDismissed = true; resize(); });
 addEventListener('resize', resize);
 addEventListener('orientationchange', () => setTimeout(resize, 200));
-document.addEventListener('visibilitychange', () => { if (!AC) return; if (document.hidden) AC.suspend(); else AC.resume(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && G && curMap && (state === 'map' || state === 'menu')) save(true); if (!AC) return; if (document.hidden) AC.suspend(); else AC.resume(); });
+addEventListener('pagehide', () => { if (G && curMap && (state === 'map' || state === 'menu')) save(true); });
 resize();
 playSong('title');
 requestAnimationFrame(frame);
