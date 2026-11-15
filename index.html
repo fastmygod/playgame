@@ -84,7 +84,7 @@ try {
 const ART_NAMES = ['lin_normal', 'lin_happy', 'lin_sad', 'lin_angry', 'lin_surprise', 'lin_determined', 'su_normal', 'su_happy', 'su_sad', 'su_angry', 'su_surprise', 'su_shy',
   'elder_normal', 'granny_normal', 'inn_normal', 'shop_normal', 'kid_normal', 'man_normal', 'wood_normal', 'foxking', 'title', 'bf_forest', 'bf_cave', 'bf_boss', 'ending',
   'lin_b_ready', 'lin_b_attack', 'lin_b_cast', 'lin_b_hurt', 'su_b_ready', 'su_b_attack', 'su_b_cast', 'su_b_hurt', 'e_bamboo', 'e_spider', 'e_ape', 'e_bat', 'e_skeleton', 'e_fox',
-  'xuan_normal', 'xuan_angry', 'e_xuanming', 'e_qinghuang', 'bf_altar', 'cg_father', 'cg_xuanming', 'cg_ultimate'];
+  'xuan_normal', 'xuan_angry', 'e_xuanming', 'e_qinghuang', 'bf_altar', 'cg_father', 'cg_xuanming', 'cg_ultimate', 'e_snake', 'e_treant', 'e_wisp', 'e_golem'];
 const ART = {};
 ART_NAMES.forEach(n => { const im = new Image(); im.decoding = 'async'; im.onload = () => { ART[n] = im; if (n.startsWith('bf_')) bgCache = null; if (n === 'title') titleBg = null; }; im.src = 'art/' + n + '.webp'; });
 const FACE = {"lin":{"x":0.36,"y":0.235,"s":0.27},"su":{"x":0.49,"y":0.235,"s":0.27},"elder":{"x":0.48,"y":0.23,"s":0.28},"granny":{"x":0.39,"y":0.195,"s":0.27},"inn":{"x":0.44,"y":0.245,"s":0.27},"shop":{"x":0.42,"y":0.225,"s":0.27},"kid":{"x":0.39,"y":0.31,"s":0.28},"man":{"x":0.44,"y":0.245,"s":0.27},"wood":{"x":0.46,"y":0.285,"s":0.27},"def":{"x":0.5,"y":0.22,"s":0.27}};
@@ -98,12 +98,13 @@ function faceCrop(img, who, x, y, w, h, zoom = 1) {
   const f = FACE[who] || FACE.def, sz = f.s * img.height / zoom;
   ctx.drawImage(img, f.x * img.width - sz / 2, f.y * img.height - sz / 2, sz, sz, x, y, w, h);
 }
-const EIMG_H = { bamboo: 98, spider: 64, ape: 104, bat: 74, skeleton: 104, fox: 72, foxking: 140, qinghuang: 150, xuanming: 140 };
+const EIMG_H = { snake: 70, treant: 110, wisp: 80, golem: 120, bamboo: 98, spider: 64, ape: 104, bat: 74, skeleton: 104, fox: 72, foxking: 140, qinghuang: 150, xuanming: 140 };
 function enemyImg(type) { return type === 'foxking' ? ART.foxking : ART['e_' + type]; }
 function drawEnemyImg(g, type, img, t) {
   let h = EIMG_H[type] || 90, w = h * img.width / img.height;
   if (w > 190) { h *= 190 / w; w = 190; }
   g.save();
+  if (type === 'wisp') { g.translate(0, -30 + Math.sin(t * 3) * 6); g.translate(0, h / 2); }
   if (type === 'bat') { g.translate(0, -38 + Math.sin(t * 4) * 5); g.scale(1, 1 + Math.sin(t * 14) * .05); g.translate(0, h / 2); }
   if (type === 'bamboo') g.rotate(Math.sin(t * 2) * .05);
   g.drawImage(img, -w / 2, -h, w, h);
@@ -167,6 +168,10 @@ const ENEMIES = {
   duzhu: { name: '毒蛛', hp: 36, atk: 15, def: 3, spd: 14, exp: 16, gold: 11, draw: 'spider', size: 1.15, poison: .4 },
   shanxiao: { name: '山魈', hp: 85, atk: 18, def: 6, spd: 7, exp: 28, gold: 20, draw: 'ape', size: 1.1 },
   bianfu: { name: '蝠妖', hp: 70, atk: 24, def: 7, spd: 16, exp: 30, gold: 17, draw: 'bat', size: 1.2, poison: .2 },
+  shemo: { name: '蛇妖', hp: 60, atk: 17, def: 5, spd: 13, exp: 22, gold: 15, draw: 'snake', size: 1.15, poison: .35 },
+  shuyao: { name: '树妖', hp: 115, atk: 19, def: 10, spd: 5, exp: 34, gold: 24, draw: 'treant', size: 1.2, spells: [{ name: '藤鞭', power: 1.25, color: '#6ab040' }] },
+  guihuo: { name: '鬼火', hp: 58, atk: 25, def: 4, spd: 18, exp: 32, gold: 18, draw: 'wisp', size: 1.1, spells: [{ name: '幽冥火', power: 1.3, color: '#7ad8ff' }] },
+  shimo: { name: '石魔', hp: 210, atk: 31, def: 20, spd: 5, exp: 62, gold: 36, draw: 'golem', size: 1.3 },
   kulou: { name: '骷髅兵', hp: 135, atk: 28, def: 12, spd: 8, exp: 45, gold: 26, draw: 'skeleton', size: 1.15 },
   huohu: { name: '火狐', hp: 105, atk: 26, def: 9, spd: 14, exp: 40, gold: 24, draw: 'fox', size: 1.2, spells: [{ name: '狐火', power: 1.35, fx: 'orb' }] },
   qinghuang: { name: '竹妖·青篁', title: '紫竹林之主 · 千年竹妖', hp: 420, atk: 24, def: 9, spd: 10, exp: 170, gold: 160, draw: 'qinghuang', size: 1.35, boss: true,
@@ -177,8 +182,8 @@ const ENEMIES = {
     spells: [{ name: '焚天狐火', power: .9, all: true, fx: 'firestorm' }, { name: '妖爪裂魂', power: 1.5, fx: 'orb' }] },
 };
 const GROUPS = {
-  forest: [['zhujing'], ['zhujing', 'zhujing'], ['duzhu', 'zhujing'], ['shanxiao'], ['duzhu', 'duzhu'], ['zhujing', 'shanxiao', 'zhujing'], ['duzhu', 'zhujing', 'duzhu']],
-  cave: [['bianfu', 'bianfu'], ['kulou'], ['huohu', 'bianfu'], ['kulou', 'bianfu'], ['huohu', 'huohu'], ['bianfu', 'kulou', 'bianfu'], ['huohu', 'kulou']],
+  forest: [['zhujing', 'zhujing'], ['duzhu', 'zhujing'], ['shanxiao'], ['shemo', 'duzhu'], ['shuyao'], ['shuyao', 'zhujing'], ['shemo', 'shemo'], ['zhujing', 'shanxiao', 'duzhu'], ['shemo', 'shuyao']],
+  cave: [['bianfu', 'bianfu'], ['kulou'], ['huohu', 'bianfu'], ['guihuo', 'guihuo'], ['shimo'], ['kulou', 'guihuo'], ['shimo', 'bianfu'], ['huohu', 'guihuo', 'bianfu'], ['kulou', 'huohu']],
 };
 const need = lv => 15 * lv * lv + 15 * lv;
 
@@ -211,9 +216,9 @@ const MAPS = {
       'T..HHDHH...,........HHHDHHH...RRRRR....T',
       'T....=.................=......HHDHH....T',
       'T....=.......w.........=........=......T',
-      'T....=.................=........=......T',
+      'T....=.................=........=.....==',
       'T....===================================',
-      'T.........,....=..............,........T',
+      'T.........,....=..............,.......==',
       'T..P...........=......~~~~~~...........T',
       'T..............=.....~~~~~~~~...,......T',
       'TFFF.FFF.......=.....~~~~~~~~..........T',
@@ -244,8 +249,9 @@ const MAPS = {
       { id: 'man', x: 20, y: 13, dir: 2, look: 'man', talk: () => manTalk() },
     ],
     chests: [{ id: 'v1', x: 37, y: 2, item: 'jinchuang', n: 2 }, { id: 'v2', x: 2, y: 14, gold: 50 }, { id: 'v3', x: 38, y: 19, item: 'jiedu', n: 2 }],
-    warps: [{ x: 39, y: 8, to: 'forest', tx: 1, ty: 10, dir: 2, cond: () => G.flags.quest, deny: () => [say('林逸尘', '东边就是紫竹林……还是先去村长家问问情况吧。')] },
-      { x: 38, y: 1, to: 'summit', tx: 14, ty: 16, dir: 3, cond: () => G.flags.ch4, deny: () => [narr('这是通往青崖山顶的小径，山间浓雾弥漫，看不清前路。')] }],
+    warps: [...[7, 8, 9].map(y => ({ x: 39, y, to: 'forest', tx: 1, ty: 10, dir: 2, cond: () => G.flags.quest, deny: () => [say('林逸尘', '东边就是紫竹林……还是先去村长家问问情况吧。')] })),
+      { x: 37, y: 1, to: 'summit', tx: 14, ty: 16, dir: 3, hidden: true, cond: () => G.flags.ch4, deny: () => [narr('这是通往青崖山顶的小径，山间浓雾弥漫，看不清前路。')] },
+      { x: 38, y: 1, to: 'summit', tx: 14, ty: 16, dir: 3, hidden: true, cond: () => G.flags.ch4, deny: () => [narr('这是通往青崖山顶的小径，山间浓雾弥漫，看不清前路。')] }],
     triggers: [],
   },
   forest: {
@@ -254,15 +260,15 @@ const MAPS = {
       'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
       'BBBBBB....ffff..BBBBBBBB....ffff....BB#WWWWB',
       'BBBB......ffffff..BBBBB....ffffff....#WWWWWB',
-      'BBB.....,..ffff.....BB.....ffBBff.....WWEWWB',
+      'BBB.....,..ffff.....BB.....ffBBff.....WEEEWB',
       'BB....BB....ff..............BBBB....ss.ss..B',
       'BB...BBBB.......ffff.....,.......sssss...BBB',
       'BB....BB.....ffffffff..........ss...ffff.BBB',
       'B...........ffffBBffff.......sss....ffffffBB',
       'B..ff..............ff......sss.....BB.fff.BB',
-      'Bffff.....,...............ss......BBBB.....B',
+      'sffff.....,...............ss......BBBB.....B',
       'sssssssss.....ff.....ssssss........BB....ffB',
-      'B.ffff..ssssssssssssss.....ffff..........ffB',
+      's.ffff..ssssssssssssss.....ffff..........ffB',
       'B..ff........ff.......ffffffffff....ff....BB',
       'BB.....BBB...ffff....fffBBBffff....ffff...BB',
       'BBB...BBBBB...ff......ffBBBff.....ffffff..BB',
@@ -284,7 +290,8 @@ const MAPS = {
     ],
     chests: [{ id: 'f1', x: 3, y: 3, item: 'huiling', n: 2 }, { id: 'f2', x: 40, y: 15, gold: 120 }, { id: 'f3', x: 17, y: 19, item: 'huanhun', n: 1 }, { id: 'f4', x: 30, y: 1, item: 'jiedu', n: 2 }],
     warps: [
-      { x: 0, y: 10, to: 'village', tx: 38, ty: 8, dir: 1 },
+      ...[9, 10, 11].map(y => ({ x: 0, y, to: 'village', tx: 38, ty: 8, dir: 1 })),
+      ...[39, 41].map(x => ({ x, y: 3, to: 'cave', tx: 2, ty: 18, dir: 3, cond: () => G.flags.metSu, deny: () => [say('林逸尘', '洞中妖气冲天……一个人贸然进去，怕是凶多吉少。')] })),
       { x: 40, y: 3, to: 'cave', tx: 2, ty: 18, dir: 3, cond: () => G.flags.metSu, deny: () => [say('林逸尘', '洞中妖气冲天……一个人贸然进去，怕是凶多吉少。'), say('林逸尘', '林子深处好像有打斗声，先去看看吧。')] },
     ],
     triggers: [{ tx: 28, ty: 8, r: 3.2, flag: 'metSu', run: () => suEvent() }, { tx: 38, ty: 4, r: 2.6, flag: 'qingDead', cond: () => G.flags.metSu, run: () => qingEvent() }],
@@ -340,13 +347,13 @@ const MAPS = {
       'WWWWWcccWWWWWWWWccccWWLLWWWccccccWWW',
       'WWccccccWWWWWWcccccccccWWWWWWWccWWWW',
       'WWcccWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
-      'WWEWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
+      'WWEEWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
       'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
     ],
     decos: [{ t: 'torch', x: 27, y: 8 }],
     npcs: [{ id: 'boss', x: 29, y: 3, dir: 2, enemy: 'boss', cond: () => !G.flags.bossDead, talk: () => bossEvent() }],
     chests: [{ id: 'c1', x: 3, y: 3, item: 'jiuzhuan', n: 1 }, { id: 'c2', x: 21, y: 4, item: 'huanhun', n: 1 }, { id: 'c3', x: 31, y: 16, item: 'huiling', n: 3 }, { id: 'c4', x: 7, y: 9, gold: 200 }],
-    warps: [{ x: 2, y: 20, to: 'forest', tx: 40, ty: 4, dir: 0 }],
+    warps: [{ x: 2, y: 20, to: 'forest', tx: 40, ty: 4, dir: 0 }, { x: 3, y: 20, to: 'forest', tx: 40, ty: 4, dir: 0 }],
     triggers: [{ tx: 29, ty: 3, r: 3.2, flag: 'bossDead', run: () => bossEvent() }],
   },
 };
@@ -401,7 +408,7 @@ function introScript() {
     say('林逸尘', '又是那道红光……爹爹留下的这柄剑，也在鞘中微微颤动。', 'sad'),
     { emote: 'player', e: '!', t: .6 },
     say('林逸尘', '对了，村长一早差人来唤我，先去他家看看吧。', 'normal'),
-    () => { hint = { text: '左半屏拖动行走（推远可跑）· 点右半屏或「察」交谈', t: 0 }; },
+    () => { hint = { text: '点地面自动走过去 · 点人物直接交谈 · 也可左半屏拖动', t: 0 }; },
   ];
 }
 function elderTalk() {
@@ -1023,7 +1030,8 @@ function sfx(n) {
       case 'tick': zheng(t, 86, .12, { dest: sfxG, dur: .12 }); break;
       case 'bump': tone(t, 160, 110, .06, 'square', .04); break;
       case 'slash': noise(t, .16, 'bandpass', 3200, 500, .7); break;
-      case 'hit': tone(t, 200, 50, .16, 'sine', .7); noise(t, .08, 'lowpass', 2000, 300, .4); break;
+      case 'hit': tone(t, 200, 60, .14, 'sine', .6); noise(t, .06, 'highpass', 3000, 1500, .35); break;
+      case 'hit2': tone(t, 150, 38, .3, 'sine', .95); tone(t, 90, 30, .35, 'triangle', .5); noise(t, .12, 'bandpass', 2500, 600, .7); noise(t, .04, 'highpass', 6000, 3000, .5); break;
       case 'magic': tone(t, 300, 1400, .45, 'sine', .2); [0, 4, 7, 12].forEach((iv, i) => zheng(t + i * .04, 79 + iv, .08, { dest: sfxG })); break;
       case 'thunder': noise(t, .8, 'lowpass', 3000, 80, .9); tone(t, 90, 30, .6, 'sawtooth', .25); break;
       case 'fire': noise(t, .6, 'lowpass', 1400, 200, .7); break;
@@ -1578,6 +1586,7 @@ function drawEnemy(g, type, x, y, t, s = 1, o = {}) {
   const a = tmpA.getContext('2d'), b = tmpB.getContext('2d');
   a.setTransform(1, 0, 0, 1, 0, 0); a.clearRect(0, 0, cw + 4, ch + 4);
   a.setTransform(rs, 0, 0, rs, (ax + 2) * rs, (ay + 2) * rs); const ln = o.lean || 0, br = o.breath || 0; a.rotate(ln * -.14); a.scale(s * (1 - ln * .1 - br * .015), s * (1 + ln * .08 + br * .025)); { const ei = enemyImg(type); if (ei) drawEnemyImg(a, type, ei, t); else drawEnemyRaw(a, type, t); }
+  if (o.tint) { a.setTransform(1, 0, 0, 1, 0, 0); a.globalCompositeOperation = 'source-atop'; a.fillStyle = o.tint; a.fillRect(0, 0, cw, ch); a.globalCompositeOperation = 'source-over'; }
   if (o.white > 0) { a.setTransform(1, 0, 0, 1, 0, 0); a.globalCompositeOperation = 'source-atop'; a.fillStyle = `rgba(255,255,255,${Math.min(1, o.white)})`; a.fillRect(0, 0, cw, ch); a.globalCompositeOperation = 'source-over'; }
   b.setTransform(1, 0, 0, 1, 0, 0); b.globalCompositeOperation = 'source-over'; b.clearRect(0, 0, cw + 4, ch + 4);
   const k = Math.max(1, Math.round(rs * .9));
@@ -1800,7 +1809,8 @@ function paintObj(g, o, m, x, y) {
         g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(px, py + 32, 32, 4);
       }
       if (ch === 'E') {
-        g.fillStyle = '#0c080e'; g.beginPath(); g.moveTo(px + 3, py + 32); g.lineTo(px + 3, py + 14); g.quadraticCurveTo(px + 16, py - 2, px + 29, py + 14); g.lineTo(px + 29, py + 32); g.fill();
+        const el = tileAt(m, x - 1, y) === 'E', er = tileAt(m, x + 1, y) === 'E', l0 = el ? px : px + 3, r0 = er ? px + 32 : px + 29;
+        g.fillStyle = '#0c080e'; g.beginPath(); g.moveTo(l0, py + 32); g.lineTo(l0, el ? py + 8 : py + 14); g.quadraticCurveTo(px + 16, py + (el && er ? 4 : -2), r0, er ? py + 8 : py + 14); g.lineTo(r0, py + 32); g.fill();
         g.strokeStyle = '#2a2230'; g.lineWidth = 2; g.beginPath(); g.moveTo(px + 3, py + 32); g.lineTo(px + 3, py + 14); g.quadraticCurveTo(px + 16, py - 2, px + 29, py + 14); g.lineTo(px + 29, py + 32); g.stroke();
         if (m.id !== 'cave') { g.fillStyle = 'rgba(255,60,30,.25)'; ell(g, px + 16, py + 24, 10, 8); }
       }
@@ -2040,7 +2050,7 @@ const joyRun = () => joy.id !== null && Math.hypot(joy.x - joy.cx, joy.y - joy.c
 cv.addEventListener('contextmenu', e => e.preventDefault());
 cv.addEventListener('pointerdown', e => { e.preventDefault(); initAudio(); try { cv.setPointerCapture(e.pointerId); } catch (_) {} onDown(toLocal(e), e.pointerId); });
 cv.addEventListener('pointermove', e => { if (joy.id === e.pointerId) { const q = toLocal(e); joy.x = q.x; joy.y = q.y; const dx = q.x - joy.cx, dy = q.y - joy.cy, l = Math.hypot(dx, dy); if (l > 64) { joy.cx += dx * (1 - 64 / l); joy.cy += dy * (1 - 64 / l); } } });
-const endPtr = e => { if (joy.id === e.pointerId) { joy.id = null; joy.dir = -1; } };
+const endPtr = e => { const q = toLocal(e); if (tapInfo && tapInfo.id === e.pointerId) { if (state === 'map' && Math.hypot(q.x - tapInfo.x, q.y - tapInfo.y) < 14 && T - tapInfo.t < .4) mapTap(q); tapInfo = null; } if (joy.id === e.pointerId) { joy.id = null; joy.dir = -1; } };
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 function onDown(p, id) {
   if (fade || trans) return;
@@ -2048,7 +2058,7 @@ function onDown(p, id) {
     const b = buttons[i];
     if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) { if (!b.disabled) { sfx('tick'); b.cb(); } return; }
   }
-  if (state === 'map') { if (p.x < W * .55) { joy.id = id; joy.cx = joy.x = p.x; joy.cy = joy.y = p.y; joy.dir = -1; } else interact(); return; }
+  if (state === 'map') { tapInfo = { id, x: p.x, y: p.y, t: T }; if (p.x < W * .55) { joy.id = id; joy.cx = joy.x = p.x; joy.cy = joy.y = p.y; joy.dir = -1; } return; }
   if (state === 'dialog') advanceDialog();
   else if (state === 'battle') battleTap(p);
   else if (state === 'chapter') { if (chapterCard.t > .8) chapterCard.t = Math.max(chapterCard.t, 3.0); }
@@ -2071,7 +2081,7 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.key] = false; if (KEYDIR[e.key] !== undefined) { const d = KEYDIR[e.key]; if (!Object.keys(KEYDIR).some(k => keys[k] && KEYDIR[k] === d)) keyDirs = keyDirs.filter(x => x !== d); } });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; keyDirs = []; joy.id = null; joy.dir = -1; });
-function inputDir() { const j = joyDir(); if (j >= 0) return j; return keyDirs.length ? keyDirs[keyDirs.length - 1] : -1; }
+function inputDir() { const j = joyDir(); if (j >= 0) { player.path = null; tapMark = null; return j; } if (keyDirs.length) { player.path = null; tapMark = null; return keyDirs[keyDirs.length - 1]; } return state === 'map' ? pathDir() : -1; }
 const stepDur = () => (joyRun() || keys.Shift) ? .12 : .17;
 function stopInput() { joy.id = null; joy.dir = -1; keyDirs = []; for (const k in keys) keys[k] = false; }
 
@@ -2147,12 +2157,12 @@ function loadMap(id, tx, ty, dir) {
   curMap = MAPS[id]; G.map = id;
   buildMapCanvases(curMap);
   player.tx = tx; player.ty = ty; [player.x, player.y] = center(tx, ty); player.dir = dir; player.moving = false;
-  encSteps = 0; amb = []; butterflies = [];
+  encSteps = 0; amb = []; butterflies = []; roamers = []; player.path = null; tapMark = null; roamGrace = T + 1.5; if (curMap.enc) for (let i = 0; i < (curMap.enc === 'cave' ? 8 : 7); i++) spawnRoamer(7);
   refreshNpcs(); placeFollower();
   mapBanner = { text: curMap.name, t: 0 };
   playSong(curMap.bgm);
-  if (id === 'forest' && !G.flags.ch2) { G.flags.ch2 = true; mapBanner = null; setTimeout(() => runScript([{ chapter: '第二章', title: '紫竹', sub: '紫竹林' }]), 0); }
-  if (id === 'cave' && !G.flags.ch3) { G.flags.ch3 = true; mapBanner = null; setTimeout(() => runScript([{ chapter: '第三章', title: '幽冥', sub: '幽冥洞' }]), 0); }
+  if (id === 'forest' && !G.flags.ch2) { mapBanner = null; setTimeout(() => { if (state !== 'map' || G.flags.ch2) return; G.flags.ch2 = true; runScript([{ chapter: '第二章', title: '紫竹', sub: '紫竹林' }]); }, 0); }
+  if (id === 'cave' && !G.flags.ch3) { mapBanner = null; setTimeout(() => { if (state !== 'map' || G.flags.ch3) return; G.flags.ch3 = true; runScript([{ chapter: '第三章', title: '幽冥', sub: '幽冥洞' }]); }, 0); }
 }
 function placeFollower() {
   const [dx, dy] = DIRV[player.dir];
@@ -2325,8 +2335,8 @@ function tryStep(d, carry) {
   player.dir = d;
   const [dx, dy] = DIRV[d], nx = player.tx + dx, ny = player.ty + dy;
   const w = warpAt(nx, ny);
-  if (w && w.cond && !w.cond()) { runScript(w.deny()); return false; }
-  if (!walkable(nx, ny) && !w) { if (!player.bumpT || player.bumpT <= 0) { sfx('bump'); player.bumpT = .3; } return false; }
+  if (w && w.cond && !w.cond()) { player.path = null; tapMark = null; runScript(w.deny()); return false; }
+  if (!walkable(nx, ny) && !w) { player.path = null; tapMark = null; if (!player.bumpT || player.bumpT <= 0) { sfx('bump'); player.bumpT = .3; } return false; }
   const ox = player.tx, oy = player.ty;
   player.sx = player.x; player.sy = player.y; [player.ex, player.ey] = center(nx, ny);
   player.dur = stepDur(); player.tx = nx; player.ty = ny; player.moving = true; player.t = carry / player.dur; player.parity ^= 1;
@@ -2345,7 +2355,7 @@ function onStepEnd() {
   const ch = tileAt(curMap, player.tx, player.ty);
   if (curMap.enc && ENC_TILES.has(ch)) {
     encSteps++;
-    if (!GM.noEnc && encSteps > 5 && Math.random() < .13) { encSteps = 0; stopInput(); sfx('alert'); state = 'alert'; alertT = 0; return true; }
+
   }
   return false;
 }
@@ -2382,6 +2392,128 @@ function updateMap(dt) {
     }
   }
 }
+
+/* ---------------- 明雷：地图上游荡的妖怪 ---------------- */
+let roamers = [], pendingGroup = null, roamGrace = 0, nextRespawn = 0, tapMark = null, tapInfo = null;
+function spawnRoamer(minDist) {
+  const m = curMap; if (!m.enc) return;
+  for (let tries = 0; tries < 80; tries++) {
+    const x = ri(1, m.w - 2), y = ri(1, m.h - 2), t = tileAt(m, x, y);
+    if (!walkable(x, y) || warpAt(x, y) || !ENC_TILES.has(t) && Math.random() < .7) continue;
+    if (Math.abs(x - player.tx) + Math.abs(y - player.ty) < minDist) continue;
+    if (roamers.some(r => r.tx === x && r.ty === y) || npcAt(x, y)) continue;
+    const group = pick(GROUPS[m.enc]).slice(), elite = Math.random() < .15, [px, py] = center(x, y);
+    roamers.push({ tx: x, ty: y, hx: x, hy: y, x: px, y: py, sx: px, sy: py, ex: px, ey: py, t: 0, moving: false, dir: 0, wt: rnd(.5, 2), group, elite, lead: group[0], ph: rnd(0, 6), chase: false });
+    return;
+  }
+}
+function updateRoamers(dt) {
+  if (!curMap.enc) return;
+  if (roamers.length < (curMap.enc === 'cave' ? 8 : 7) && T > nextRespawn) { spawnRoamer(10); nextRespawn = T + 22; }
+  for (const r of roamers) {
+    if (r.moving) {
+      r.t += dt / (r.chase ? .26 : .38);
+      if (r.t >= 1) { r.x = r.ex; r.y = r.ey; r.moving = false; } else { r.x = lerp(r.sx, r.ex, r.t); r.y = lerp(r.sy, r.ey, r.t); }
+    } else {
+      r.wt -= dt;
+      const dx = player.tx - r.tx, dy = player.ty - r.ty, dist = Math.abs(dx) + Math.abs(dy);
+      r.chase = !GM.noEnc && dist <= 5;
+      if (r.wt <= 0) {
+        let dirs;
+        if (r.chase) { const hx = dx ? (dx < 0 ? 1 : 2) : -1, vy = dy ? (dy < 0 ? 3 : 0) : -1; dirs = Math.abs(dx) >= Math.abs(dy) ? [hx, vy] : [vy, hx]; dirs = dirs.filter(d => d >= 0); r.wt = rnd(.05, .2); }
+        else { dirs = [ri(0, 3)]; r.wt = rnd(.8, 2.4); }
+        for (const d of dirs) {
+          const [ddx, ddy] = DIRV[d], nx = r.tx + ddx, ny = r.ty + ddy;
+          if (!walkable(nx, ny) || warpAt(nx, ny) || roamers.some(o => o !== r && o.tx === nx && o.ty === ny)) continue;
+          if (!r.chase && (Math.abs(nx - r.hx) > 4 || Math.abs(ny - r.hy) > 4)) continue;
+          r.dir = d; r.sx = r.x; r.sy = r.y; r.tx = nx; r.ty = ny; [r.ex, r.ey] = center(nx, ny); r.t = 0; r.moving = true; break;
+        }
+      }
+    }
+    if (!GM.noEnc && T > roamGrace && state === 'map' && !fade && Math.hypot(r.x - player.x, r.y - player.y) < 20) {
+      roamers = roamers.filter(o => o !== r); nextRespawn = Math.max(nextRespawn, T + 18);
+      pendingGroup = r.group.map((id, i) => i === 0 && r.elite ? { id, elite: true } : id);
+      stopInput(); player.path = null; sfx('alert'); state = 'alert'; alertT = 0; return;
+    }
+  }
+}
+function drawRoamer(r, cx, cy) {
+  const E = ENEMIES[r.lead]; if (!E) return;
+  if (r.elite) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const g2 = ctx.createRadialGradient(r.x - cx, r.y - cy - 14, 2, r.x - cx, r.y - cy - 14, 34); g2.addColorStop(0, `rgba(255,60,40,${.35 + Math.sin(T * 6) * .1})`); g2.addColorStop(1, 'rgba(255,40,20,0)'); ctx.fillStyle = g2; ctx.fillRect(r.x - cx - 34, r.y - cy - 48, 68, 68); ctx.restore(); }
+  drawEnemy(ctx, E.draw, r.x - cx, r.y - cy, T + r.ph, .42, { tint: r.elite ? 'rgba(255,40,30,.3)' : null, lean: r.moving ? Math.sin(T * 14) * .3 : 0 });
+  if (r.chase) text('!', r.x - cx, r.y - cy - 52 + Math.sin(T * 10) * 2, 18, '#ff5a3a', 'center', FB, true);
+}
+/* ---------------- 点击寻路 ---------------- */
+function findPath(tx, ty, adjacentOk) {
+  const sx = player.tx, sy = player.ty, key = (x, y) => y * 1000 + x;
+  const prev = new Map([[key(sx, sy), -1]]), q = [[sx, sy]];
+  let goal = null;
+  while (q.length && prev.size < 2500) {
+    const [x, y] = q.shift();
+    if ((x === tx && y === ty) || (adjacentOk && Math.abs(x - tx) + Math.abs(y - ty) === 1)) { goal = [x, y]; break; }
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DIRV[d][0], ny = y + DIRV[d][1], k = key(nx, ny);
+      if (prev.has(k)) continue;
+      const w = warpAt(nx, ny);
+      if (!walkable(nx, ny) && !w) continue;
+      if (w && !(nx === tx && ny === ty)) continue;
+      prev.set(k, key(x, y) * 4 + d); q.push([nx, ny]);
+    }
+  }
+  if (!goal) return null;
+  const dirs = []; let k = key(goal[0], goal[1]);
+  while (prev.get(k) !== -1) { const v = prev.get(k); dirs.unshift(v % 4); k = Math.floor(v / 4); }
+  return dirs;
+}
+function mapTap(q) {
+  const [cx, cy] = camera(), wx = q.x + cx, wy = q.y + cy;
+  let target = npcs.find(n => Math.abs(wx - n.x) < 16 && wy > n.y - 46 && wy < n.y + 6);
+  let tx, ty, interactAfter = false;
+  if (target) { tx = target.tx; ty = target.ty; interactAfter = true; }
+  else {
+    tx = Math.floor(wx / TILE); ty = Math.floor((wy + 6) / TILE);
+    const c = chestAt(tx, ty), d = curMap.decoAt[tk(tx, ty)];
+    if (c || (d && decoTalk(d) && !walkable(tx, ty)) || (!walkable(tx, ty) && !warpAt(tx, ty) && (tileAt(curMap, tx, ty) === '~' || tileAt(curMap, tx, ty) === 'w'))) interactAfter = true;
+  }
+  if (tx === player.tx && ty === player.ty) { if (interactAfter) interact(); return; }
+  const path = findPath(tx, ty, interactAfter || (!walkable(tx, ty) && !warpAt(tx, ty)));
+  if (!path) { sfx('bump'); return; }
+  player.path = path; player.pathGoal = interactAfter ? { tx, ty } : null;
+  tapMark = { x: tx * TILE + 16, y: ty * TILE + 22, t: 0 };
+  if (!path.length && interactAfter) { faceTo(tx, ty); interact(); player.path = null; }
+}
+function faceTo(tx, ty) { const dx = tx - player.tx, dy = ty - player.ty; if (dx || dy) player.dir = Math.abs(dx) >= Math.abs(dy) ? (dx < 0 ? 1 : 2) : (dy < 0 ? 3 : 0); }
+function pathDir() {
+  if (!player.path) return -1;
+  if (!player.path.length) { const g2 = player.pathGoal; player.path = null; player.pathGoal = null; tapMark = null; if (g2) { faceTo(g2.tx, g2.ty); setTimeout(() => { if (state === 'map') interact(); }, 0); } return -1; }
+  return player.path.shift();
+}
+function drawExits(cx, cy) {
+  const seen = {};
+  for (const w of curMap.warps) {
+    if (w.hidden && w.cond && !w.cond()) continue;
+    const px = w.x * TILE + 16 - cx, py = w.y * TILE + 16 - cy;
+    if (px < -40 || px > W + 40 || py < -40 || py > H + 40) continue;
+    const m = curMap, below = tileAt(m, w.x, w.y + 1);
+    const d = w.x === 0 ? 'L' : w.x === m.w - 1 ? 'R' : (!SOLID.has(below) && below !== 'X') ? 'U' : 'D';
+    const open = !w.cond || w.cond(), ang = { L: Math.PI, R: 0, U: -Math.PI / 2, D: Math.PI / 2 }[d], bob = Math.sin(T * 4) * 4;
+    ctx.save(); ctx.translate(px + Math.cos(ang) * bob, py + Math.sin(ang) * bob - (d === 'U' ? 8 : 0)); ctx.rotate(ang);
+    ctx.globalAlpha = open ? .55 + Math.sin(T * 4) * .25 : .25;
+    ctx.fillStyle = open ? '#ffe08a' : '#999'; ctx.strokeStyle = 'rgba(40,20,0,.6)'; ctx.lineWidth = 1.2;
+    for (let i = 0; i < 2; i++) { ctx.beginPath(); ctx.moveTo(-6 + i * 7, -7); ctx.lineTo(1 + i * 7, 0); ctx.lineTo(-6 + i * 7, 7); ctx.lineTo(-3 + i * 7, 0); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.restore();
+    (seen[w.to] = seen[w.to] || []).push([px, py, d, open]);
+  }
+  for (const k in seen) {
+    const arr = seen[k], x = arr.reduce((a2, b2) => a2 + b2[0], 0) / arr.length, y = arr.reduce((a2, b2) => a2 + b2[1], 0) / arr.length, d = arr[0][2];
+    const lx = clamp(x + (d === 'R' ? -46 : d === 'L' ? 46 : 0), 50, W - 50), ly = clamp(y + (d === 'U' ? 26 : d === 'D' ? -30 : -28), 20, H - 20);
+    const label = MAPS[k].name + (arr[0][3] ? '' : '（未开放）');
+    ctx.font = `bold 12px ${FB}`; const tw = ctx.measureText(label).width + 16;
+    ctx.save(); ctx.globalAlpha = .85; rr(ctx, lx - tw / 2, ly - 11, tw, 20, 10); ctx.fillStyle = 'rgba(12,10,8,.75)'; ctx.fill(); ctx.strokeStyle = 'rgba(214,180,106,.7)'; ctx.stroke(); ctx.restore();
+    text(label, lx, ly + 4, 12, arr[0][3] ? '#ffe9b0' : '#aaa', 'center', FB, true);
+  }
+}
+
 function interact() {
   if (player.moving) return;
   const [dx, dy] = DIRV[player.dir], fx = player.tx + dx, fy = player.ty + dy;
@@ -2466,6 +2598,8 @@ function drawMapScene() {
   // 实体
   const ents = [];
   for (const c of curMap.chests) ents.push({ y: c.y * TILE + 24, f: () => drawChest(c.x * TILE + 16 - cx, c.y * TILE + 26 - cy, !!G.chests[c.id]) });
+  for (const r of roamers) ents.push({ y: r.y, f: () => drawRoamer(r, cx, cy) });
+  if (tapMark) ents.push({ y: -1e9, f: () => { const a = Math.max(0, 1 - (tapMark.t % 1)); ctx.save(); ctx.strokeStyle = `rgba(255,230,150,${.8 * a})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(tapMark.x - cx, tapMark.y - cy, 6 + (1 - a) * 10, 3 + (1 - a) * 5, 0, 0, 7); ctx.stroke(); ctx.restore(); } });
   for (const n of npcs) ents.push({ y: n.y, f: () => {
     if (n.enemy) drawEnemy(ctx, ENEMIES[n.enemy].draw, n.x - cx, n.y - cy, T + n.hx, ENEMIES[n.enemy].boss ? .62 : .55);
     else blitChar(ctx, n.x - cx, n.y - cy, n.dir, n.moving ? (n.t > .1 && n.t < .9 ? (n.parity ? 1 : 3) : 0) : 0, n.look, 1, { lift: n.moving ? 0 : Math.max(0, Math.sin(T * 2.4 + n.hx)) * .8 });
@@ -2522,6 +2656,7 @@ function drawMapScene() {
     const gr = ctx.createRadialGradient(W / 2, H / 2, H * .45, W / 2, H / 2, W * .75); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(10,14,20,.35)');
     ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H);
   }
+  drawExits(cx, cy);
   ctx.save(); ctx.translate(-cx, -cy); drawParts(mapParts); ctx.restore();
   for (const e of emotes) drawEmote(e, e.a.x - cx, e.a.y - cy);
   if (state === 'alert') { const px = player.x - cx, py = player.y - cy - 56 - Math.min(1, alertT * 6) * 6; ctx.fillStyle = '#fff'; rr(ctx, px - 9, py - 14, 18, 22, 5); ctx.fill(); ctx.strokeStyle = OUTLINE; ctx.lineWidth = 1.5; ctx.stroke(); text('!', px, py + 4, 18, '#c0392b', 'center', FB, true); }
@@ -2705,7 +2840,7 @@ function drawMenu() {
     button(cx + 16, py + 84, 220, 48, muted ? '开启声音' : '关闭声音', () => setMute(!muted));
     button(cx + 16, py + 204, 220, 48, 'GM 测试面板', () => openGM('menu'));
     button(cx + 16, py + 144, 220, 48, '回到标题', () => { fadeTo(() => { state = 'title'; stopSong(); playSong('title'); amb = []; }); });
-    ['操作说明', '· 左半屏拖动：行走，推远可跑步', '· 点右半屏 / 「察」：交谈、开宝箱、查看', '· 草丛与洞穴中会遭遇妖怪', '· 键盘：方向键/WASD（Shift 跑步），空格确认，M 菜单'].forEach((l, i) => text(l, cx + 260, py + 44 + i * 26, i ? 14 : 16, i ? '#e6dcc6' : '#e8c77a', 'left', FB, !i));
+    ['操作说明', '· 点地面：自动寻路；点人物/宝箱：走过去并交谈', '· 左半屏拖动：摇杆行走，推远可跑步', '· 草丛与洞穴中会遭遇妖怪', '· 键盘：方向键/WASD（Shift 跑步），空格确认，M 菜单'].forEach((l, i) => text(l, cx + 260, py + 44 + i * 26, i ? 14 : 16, i ? '#e6dcc6' : '#e8c77a', 'left', FB, !i));
     const tm = Math.floor(G.time); text(`游戏时间 ${Math.floor(tm / 3600)}:${String(Math.floor(tm / 60) % 60).padStart(2, '0')}:${String(tm % 60).padStart(2, '0')}`, cx + 260, py + 200, 13, '#bba67a');
     if (shopMsg) text(shopMsg, cx + 16, py + 230, 15, '#9fe0b0');
   }
@@ -2758,7 +2893,7 @@ function drawGM() {
     ['传送', [['青石镇', () => gmGo('village', 32, 6, 0)], ['紫竹林', () => gmGo('forest', 2, 10, 2)], ['幽冥洞', () => gmGo('cave', 2, 18, 3)], ['狐王洞前', () => gmGo('cave', 29, 8, 3)], ['青崖山顶', () => { gmEnsure(); joinSu(); Object.assign(G.flags, { quest: true, metSu: true, qingDead: true, bossDead: true, ch2: true, ch3: true, ch4: true }); gmGo('summit', 14, 16, 3); }]]],
     ['角色', [['升 1 级', () => gmAll(() => G.party.forEach(p => levelUp(p)), '全员升 1 级')], ['升到 8 级', () => gmAll(() => G.party.forEach(p => { while (p.lv < 8) levelUp(p); }), '全员升到 8 级')], ['回满状态', () => gmAll(healAll, '状态已回满')], ['铜钱 +1000', () => gmAll(() => G.gold += 1000, '铜钱 +1000')], ['苏青瑶入队', () => gmAll(() => { joinSu(); G.flags.metSu = true; G.flags.quest = true; if (curMap) { refreshNpcs(); placeFollower(); } }, '苏青瑶已入队')]]],
     ['物品', [['全部道具 ×9', () => gmAll(() => ['jinchuang', 'huiling', 'jiedu', 'huanhun', 'jiuzhuan'].forEach(k => G.items[k] = 9), '道具各 9 个')], ['学会全部仙术', () => gmAll(() => G.party.forEach(p => { Object.values(LEARN[p.id]).flat().forEach(s => { if (!p.skills.includes(s)) p.skills.push(s); }); }), '已学会全部仙术')], ['全部装备', () => gmAll(() => EQUIPS.forEach(e => { if (!G.bought[e.id]) { G.bought[e.id] = true; const q = G.party.find(x => x.id === e.who); if (q) q[e.stat] += e.v; } }), '已获得全部装备')], ['保存进度', () => { gmEnsure(); gmMsg = save() ? '已保存' : '保存失败'; }], ['删除存档', () => { wipeSave(); gmMsg = '存档已删除'; }]]],
-    ['开关', [[`遇敌：${GM.noEnc ? '关' : '开'}`, () => { GM.noEnc = !GM.noEnc; }], [`无敌：${GM.god ? '开' : '关'}`, () => { GM.god = !GM.god; }], [`秒杀：${GM.ohk ? '开' : '关'}`, () => { GM.ohk = !GM.ohk; }], [`二倍速：${battleFast ? '开' : '关'}`, () => { battleFast = !battleFast; }], [`自动战斗：${battleAuto ? '开' : '关'}`, () => { battleAuto = !battleAuto; }]]],
+    ['开关', [[`怪物：${GM.noEnc ? '关' : '开'}`, () => { GM.noEnc = !GM.noEnc; }], [`无敌：${GM.god ? '开' : '关'}`, () => { GM.god = !GM.god; }], [`秒杀：${GM.ohk ? '开' : '关'}`, () => { GM.ohk = !GM.ohk; }], [`二倍速：${battleFast ? '开' : '关'}`, () => { battleFast = !battleFast; }], [`自动战斗：${battleAuto ? '开' : '关'}`, () => { battleAuto = !battleAuto; }]]],
     ['剧情', [['完成村长委托', () => gmAll(() => G.flags.quest = true, '已接到村长委托')], ['重置苏青瑶', () => gmAll(() => { G.party = G.party.filter(p => p.id !== 'su'); delete G.flags.metSu; delete G.flags.suBusy; if (curMap) refreshNpcs(); }, '苏青瑶事件已重置')], ['重置狐王', () => gmAll(() => { delete G.flags.bossDead; delete G.flags.bossBusy; if (curMap) refreshNpcs(); }, '狐王已复活')], ['看结局', () => { gmEnsure(); fadeTo(() => { state = 'ending'; endT = 0; playSong('title'); }); }], ['回到标题', () => fadeTo(() => { state = 'title'; playSong('title'); })]]],
     ['战斗', [['竹林小怪', () => gmBattle(pick(GROUPS.forest))], ['洞穴小怪', () => gmBattle(pick(GROUPS.cave))], ['竹妖青篁', () => gmBattle(['qinghuang'], true)], ['赤炎狐王', () => gmBattle(['boss'], true)], ['玄冥子', () => gmBattle(['xuanming'], true)]]],
   ];
@@ -2821,7 +2956,7 @@ let BDT = 0;
 function* tween(obj, props, dur) { const st = {}; for (const k in props) st[k] = obj[k]; let t = 0; while (t < dur) { t += BDT; const e = easeOut(Math.min(1, t / dur)); for (const k in props) obj[k] = st[k] + (props[k] - st[k]) * e; yield 0; } }
 function startBattle(ids, opts = {}) {
   sfx('encounter'); stopInput();
-  const en = ids.map(id => { const d = ENEMIES[id]; return { ...d, key: id, hp: d.hp, mhp: d.hp, alive: true, isEnemy: true, ox: 0, oy: 0, lean: 0, flash: 0, dead: 0, ph: Math.random() * 6 }; });
+  const en = ids.map(x => { const id = typeof x === 'string' ? x : x.id, d = ENEMIES[id], el = typeof x === 'object' && x.elite; const e = { ...d, key: id, hp: d.hp, mhp: d.hp, alive: true, isEnemy: true, ox: 0, oy: 0, lean: 0, flash: 0, dead: 0, ph: Math.random() * 6 }; if (el) Object.assign(e, { elite: true, name: '狂暴·' + d.name, hp: Math.round(d.hp * 1.7), mhp: Math.round(d.hp * 1.7), atk: Math.round(d.atk * 1.25), exp: Math.round(d.exp * 2.3), gold: Math.round(d.gold * 2) }); return e; });
   const layouts = { 1: [[0, 0]], 2: [[-30, -45], [30, 45]], 3: [[-60, -60], [50, -15], [-20, 55]] };
   en.forEach((e, i) => { const l = layouts[en.length][i]; e.bx = 230 + l[0]; e.by = (e.boss ? 262 : 232) + l[1]; });
   G.party.forEach(p => { p.defend = false; p.ox = 0; p.oy = 0; p.flash = 0; p.cast = 0; p.pose = null; p.poseT = 0; p.kb = 0; p.lean = 0; });
@@ -2886,34 +3021,51 @@ let hitStop = 0;
 const SEALS = { lin: '逸尘', su: '青瑶', 'E:foxking': '狐王', 'E:qinghuang': '青篁', 'E:xuanming': '玄冥' };
 function* cutIn(who, name, color, ex, big = true, pose = 'cast') { const dur = big ? 1.05 : .62; battle.cutin = { who, name, color, ex: ex || 'angry', t: 0, dur, big, pose, seal: SEALS[who] || '妖', seed: ri(1, 9999) }; sfx(big ? 'cutin' : 'magic'); yield dur; battle.cutin = null; }
 function burst(x, y, color, n = 14, sp = 120, kind = 'dot') { for (let i = 0; i < n; i++) { const a = rnd(0, Math.PI * 2), v = rnd(sp * .3, sp); addP({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rnd(.3, .6), size: rnd(1.5, 3.5), color, kind }); } }
-function applyDmg(t, d, crit) {
-  t.hp = Math.max(0, t.hp - d); t.flash = .35; shake = Math.max(shake, crit ? 9 : 4); sfx('hit');
-  const p = posOf(t); addText(p.x + rnd(-8, 8), p.y - (t.isEnemy ? 70 * (t.size || 1) : 84), (crit ? '暴击 ' : '') + d, crit ? '#ffd36b' : '#ffffff', crit ? 30 : 26);
-  burst(p.x, p.y - 35, crit ? '#ffd36b' : '#ffe9d0', 10, 140);
-  t.kb = t.isEnemy ? -10 : 10;
-  hitStop = Math.max(hitStop, crit ? .09 : .045);
-  if (crit) battle.zoom = { x: p.x, y: p.y - 40, t: .3 };
-  if (!t.isEnemy) { t.pose = 'hurt'; t.poseT = .38; }
-  if (t.isEnemy && t.hp <= 0) { t.alive = false; t.dead = .001; }
+function applyDmg(t, d, crit, o = {}) {
+  const fin = o.fin !== false;
+  t.hp = Math.max(0, t.hp - d); t.flash = .35;
+  shake = Math.max(shake, crit ? 13 : fin ? 7 : 3.5); sfx(fin || crit ? 'hit2' : 'hit');
+  const p = posOf(t), hy = p.y - (t.isEnemy ? 40 * (t.size || 1) : 44);
+  addText(p.x + rnd(-10, 10), p.y - (t.isEnemy ? 74 * (t.size || 1) : 88) - (o.combo || 0) * 6, (crit ? '会心 ' : '') + d, crit ? '#ffd36b' : t.isEnemy ? '#ffffff' : '#ff9a8a', crit ? 40 : fin ? 32 : 26);
+  burst(p.x, hy, crit ? '#ffd36b' : '#fff0dc', fin ? 18 : 9, fin ? 220 : 150, 'spark');
+  addP({ kind: 'impact', x: p.x, y: hy, life: fin ? .32 : .2, size: fin ? (crit ? 90 : 64) : 40, color: crit ? '#ffe7a0' : '#ffffff' });
+  if (fin) addP({ kind: 'ring', x: p.x, y: hy, life: .35, size: crit ? 70 : 46, color: crit ? '#ffd36b' : '#ffffff' });
+  t.kb = (t.isEnemy ? -1 : 1) * (crit ? 28 : fin ? 18 : 9);
+  hitStop = Math.max(hitStop, crit ? .15 : fin ? .085 : .045);
+  if (crit || (fin && o.combo >= 2)) battle.zoom = { x: p.x, y: hy, t: .3 };
+  if (crit) flashScreen = Math.max(flashScreen, .22);
+  if (!t.isEnemy) { t.pose = 'hurt'; t.poseT = .38; battle.hurtFlash = .35; }
+  if (t.isEnemy && t.hp <= 0) { t.alive = false; t.dead = .001; hitStop = Math.max(hitStop, .16); flashScreen = Math.max(flashScreen, .18); burst(p.x, hy, '#ffffff', 26, 260, 'spark'); }
   if (!t.isEnemy && t.hp <= 0) { t.defend = false; t.poison = 0; addText(p.x, p.y - 112, '倒下了', '#ff8a7a', 18); }
 }
-function hit(a, t, power, kind) { let d = calcDmg(a, t, power, kind), crit = false; if (kind === 'atk' && Math.random() < .1) { d = Math.round(d * 1.6); crit = true; } applyDmg(t, d, crit); }
+function hit(a, t, power, kind, o = {}) { let d = calcDmg(a, t, power, kind), crit = false; if (kind === 'atk' && Math.random() < (o.critRate ?? .1)) { d = Math.round(d * 1.7); crit = true; } applyDmg(t, d, crit, o); }
 function heal(t, v) { if (t.hp <= 0) return; t.hp = Math.min(t.mhp, t.hp + v); if (t.poison) { t.poison = 0; } const p = posOf(t); addText(p.x, p.y - 84, '+' + v, '#8dffb0'); }
 function* melee(a, t, power, kind) {
   const from = posOf(a), to = posOf(t);
   const dest = to.x + (a.isEnemy ? -62 : 62 * (t.size || 1));
-  if (a.isEnemy) { yield* tween(a, { lean: 1 }, .16); yield* tween(a, { ox: dest - from.x, oy: to.y - from.y + 2, lean: -1 }, .2); }
-  else { yield* tween(a, { ox: dest - from.x, oy: to.y - from.y + 2 }, .24); a.pose = 'swing1'; yield .1; a.pose = 'swing2'; }
-  sfx('slash');
-  addP({ kind: 'slash', x: to.x, y: to.y - 38, life: .25, size: a.isEnemy ? 40 : 48, color: a.isEnemy ? '#ff8a6a' : '#e8f6ff', flip: a.isEnemy });
-  yield .05;
-  if (t.isEnemy ? t.alive : t.hp > 0) {
-    hit(a, t, power, kind);
-    if (a.poison && !t.isEnemy && t.hp > 0 && Math.random() < a.poison) { t.poison = 3; const p = posOf(t); addText(p.x, p.y - 112, '中毒了', '#c89aff', 18); }
+  if (a.isEnemy) {
+    yield* tween(a, { lean: 1 }, .16); yield* tween(a, { ox: dest - from.x, oy: to.y - from.y + 2, lean: -1 }, .18);
+    sfx('slash'); addP({ kind: 'slash', x: to.x, y: to.y - 38, life: .25, size: 46, color: '#ff8a6a', flip: true, rot: rnd(-.4, .4) });
+    yield .04;
+    if (t.hp > 0) { hit(a, t, power, kind, { fin: true }); if (a.poison && t.hp > 0 && Math.random() < a.poison) { t.poison = 3; const p = posOf(t); addText(p.x, p.y - 112, '中毒了', '#c89aff', 18); } }
+    yield .3;
+  } else {
+    yield* tween(a, { ox: dest - from.x, oy: to.y - from.y + 2 }, .2);
+    const ws = a.id === 'lin' ? [.32, .32, .62] : [.5, .72];
+    for (let i = 0; i < ws.length; i++) {
+      if (!t.alive) break;
+      const fin = i === ws.length - 1;
+      a.pose = 'swing1'; yield .05; a.pose = 'swing2';
+      sfx('slash');
+      addP({ kind: 'slash', x: to.x, y: to.y - 38 * (t.size || 1), life: .24, size: fin ? 60 : 46, color: fin ? '#fff6dc' : '#e8f6ff', flip: i % 2 === 1, rot: [-.2, .5, -.7][i % 3] });
+      yield .03;
+      hit(a, t, power * ws[i], kind, { fin, combo: i + 1, critRate: fin ? .15 : 0 });
+      if (fin && ws.length > 1) addText(to.x + 40, to.y - 110 * (t.size || 1), `${ws.length} 连击`, '#f0c86a', 18);
+      yield fin ? .26 : .1;
+    }
+    a.pose = null;
   }
-  yield .28;
-  if (!a.isEnemy) a.pose = null;
-  yield* tween(a, { ox: 0, oy: 0, lean: 0 }, .22);
+  yield* tween(a, { ox: 0, oy: 0, lean: 0 }, .2);
 }
 function* castFx(a, color) {
   const ap = posOf(a); a.cast = .75; sfx('magic');
@@ -3055,7 +3207,7 @@ function* battleEnd(res) {
 function finishBattle(won) {
   const opts = battle.opts;
   G.party.forEach(p => { p.poison = 0; });
-  fadeTo(() => { state = 'map'; battle = null; co = null; stopSong(); playSong(curMap.bgm); save(true); }, () => { if (won && opts.onWin) opts.onWin(); });
+  fadeTo(() => { state = 'map'; battle = null; co = null; stopSong(); playSong(curMap.bgm); roamGrace = T + 2.5; save(true); }, () => { if (won && opts.onWin) opts.onWin(); });
 }
 function battleTap(p) {
   if (!battle) return;
@@ -3145,7 +3297,8 @@ function drawBattle() {
   const draws = [];
   b.en.forEach(e => { if (e.dead >= 1) return; draws.push({ y: e.by + e.oy, f: () => {
     const a = e.dead > 0 ? 1 - e.dead : 1, white = e.dead > 0 ? 1 : e.flash > 0 ? e.flash / .35 : 0;
-    drawEnemy(ctx, e.draw, e.bx + e.ox + (e.kb || 0), e.by + e.oy, T + e.ph, e.size || 1, { alpha: a, lean: e.lean || 0, breath: Math.sin(T * 3 + e.ph), white });
+    if (e.elite && e.dead <= 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; const eg = ctx.createRadialGradient(e.bx, e.by - 30, 4, e.bx, e.by - 30, 70); eg.addColorStop(0, `rgba(255,60,40,${.25 + Math.sin(T * 5) * .08})`); eg.addColorStop(1, 'rgba(255,40,20,0)'); ctx.fillStyle = eg; ctx.fillRect(e.bx - 70, e.by - 100, 140, 140); ctx.restore(); }
+    drawEnemy(ctx, e.draw, e.bx + e.ox + (e.kb || 0), e.by + e.oy, T + e.ph, e.size || 1, { alpha: a, lean: e.lean || 0, breath: Math.sin(T * 3 + e.ph), white, tint: e.elite ? 'rgba(255,40,30,.28)' : null });
   } }); });
   G.party.forEach((p, i) => { const pp = partyPos(i); draws.push({ y: pp.y + p.oy, f: () => {
     if (p.cast > 0) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = `rgba(190,230,255,${p.cast})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(pp.x + p.ox, pp.y + p.oy, 30, 9, 0, 0, 7); ctx.stroke(); ctx.restore(); }
@@ -3168,6 +3321,7 @@ function drawBattle() {
   for (const t of b.texts) { const k = t.t / 1.2; ctx.save(); ctx.globalAlpha = k > .7 ? (1 - k) / .3 : 1; const yy = t.y - easeOut(Math.min(1, t.t * 3)) * 26, pop = 1 + .55 * Math.max(0, 1 - t.t * 6); ctx.font = `bold ${Math.round(t.size * pop)}px ${FB}`; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.strokeText(t.s, t.x, yy); ctx.fillStyle = t.color; ctx.fillText(t.s, t.x, yy); ctx.restore(); }
   ctx.restore();
   if (flashScreen > 0) { ctx.fillStyle = `rgba(240,235,255,${flashScreen})`; ctx.fillRect(0, 0, W, H); }
+  if (b.hurtFlash > 0) { b.hurtFlash -= DT; const hg = ctx.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, W * .7); hg.addColorStop(0, 'rgba(200,0,0,0)'); hg.addColorStop(1, `rgba(200,0,0,${b.hurtFlash})`); ctx.fillStyle = hg; ctx.fillRect(0, 0, W, H); }
   const boss = b.en.find(e => e.boss);
   if (boss && boss.alive) { panel(W / 2 - 170, 10, 340, 40, .82); text(boss.name, W / 2 - 150, 36, 18, '#ff9a7a', 'left', FT); bar(W / 2 - 66, 24, 222, 10, boss.hp, boss.mhp, '#8a1a10', '#ff6a3a'); }
   if (b.banner) { const a = Math.min(1, b.banner.t * 5, (1.3 - b.banner.t) * 4); ctx.save(); ctx.globalAlpha = clamp(a, 0, 1); const by = boss ? 58 : 18; const gr = ctx.createLinearGradient(W / 2 - 180, 0, W / 2 + 180, 0); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(.5, 'rgba(0,0,0,.6)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = gr; ctx.fillRect(W / 2 - 180, by, 360, 50); ctx.fillStyle = 'rgba(214,180,106,.7)'; ctx.fillRect(W / 2 - 110, by + 2, 220, 1); ctx.fillRect(W / 2 - 110, by + 47, 220, 1); text(b.banner.text, W / 2, by + 38, 32, '#f3ead8', 'center', FT); ctx.restore(); }
@@ -3266,7 +3420,8 @@ function drawParts(parts) {
       ctx.beginPath(); for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; ctx.moveTo(Math.cos(a) * p.size, Math.sin(a) * p.size); ctx.lineTo(Math.cos(a) * p.size * 1.3, Math.sin(a) * p.size * 1.3); } ctx.stroke();
       ctx.beginPath(); for (let i = 0; i < 3; i++) { const a = i / 3 * Math.PI * 2 - Math.PI / 2; ctx.lineTo(Math.cos(a) * p.size, Math.sin(a) * p.size); } ctx.closePath(); ctx.stroke();
     }
-    else if (p.kind === 'slash') { ctx.globalAlpha = 1 - k; ctx.translate(p.x, p.y); if (p.flip) ctx.scale(-1, 1); ctx.rotate(-.6); ctx.strokeStyle = p.color; ctx.lineCap = 'round'; for (let i = 0; i < 3; i++) { ctx.lineWidth = 5 - i * 1.5; ctx.beginPath(); ctx.arc(0, 0, p.size - i * 6, -Math.PI * .9 + k * .8, -Math.PI * .1 + k * .8); ctx.stroke(); } }
+    else if (p.kind === 'impact') { ctx.globalAlpha = 1 - k; ctx.translate(p.x, p.y); ctx.strokeStyle = p.color; ctx.lineCap = 'round'; for (let i = 0; i < 12; i++) { const a2 = i / 12 * Math.PI * 2 + p.size; const r1 = p.size * (.15 + k * .6), r2 = p.size * (.35 + k * .9); ctx.lineWidth = 3 * (1 - k) + .5; line(ctx, Math.cos(a2) * r1, Math.sin(a2) * r1, Math.cos(a2) * r2, Math.sin(a2) * r2); } ctx.fillStyle = `rgba(255,255,255,${(1 - k) * .8})`; circ(ctx, 0, 0, p.size * .22 * (1 - k)); }
+    else if (p.kind === 'slash') { ctx.globalAlpha = 1 - k; ctx.translate(p.x, p.y); if (p.flip) ctx.scale(-1, 1); ctx.rotate(-.6 + (p.rot || 0)); ctx.strokeStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 14; ctx.lineCap = 'round'; for (let i = 0; i < 3; i++) { ctx.lineWidth = 8 - i * 2.5; ctx.beginPath(); ctx.arc(0, 0, p.size - i * 6, -Math.PI * .9 + k * .8, -Math.PI * .1 + k * .8); ctx.stroke(); } }
     else if (p.kind === 'sword' || p.kind === 'shard' || p.kind === 'orb') {
       const e = p.kind === 'orb' ? k : easeOut(k), x = lerp(p.x, p.tx, e), y = lerp(p.y, p.ty, e), ang = Math.atan2(p.ty - p.y, p.tx - p.x);
       ctx.translate(x, y); ctx.rotate(ang);
@@ -3471,11 +3626,11 @@ function update(dt) {
   if (saveFlash > 0) saveFlash -= dt;
   if (state === 'ending') endT += dt;
   switch (state) {
-    case 'map': if (!fade) updateMap(dt); updateWorldFx(dt); updateAmb(dt, curMap.amb); break;
+    case 'map': if (!fade) { updateMap(dt); if (state === 'map') updateRoamers(dt); } if (tapMark) tapMark.t += dt; updateWorldFx(dt); updateAmb(dt, curMap.amb); break;
     case 'cut': updateCut(dt); updateAmb(dt, curMap.amb); break;
     case 'chapter': chapterCard.t += dt; if (chapterCard.t > 3.4) { chapterCard = null; state = 'map'; stepScript(); } break;
     case 'cg': cgView.t += dt; break;
-    case 'alert': alertT += dt; if (alertT > .55) startBattle(pick(GROUPS[curMap.enc])); break;
+    case 'alert': alertT += dt; if (alertT > .55) { const g2 = pendingGroup || pick(GROUPS[curMap.enc]); pendingGroup = null; startBattle(g2); } break;
     case 'dialog': case 'menu': case 'shop': if (dialog) dialog.shown += dt * 42; updateWorldFx(dt); updateAmb(dt, curMap.amb); break;
     case 'trans': trans.t += dt; if (trans.t >= trans.dur) { const n = trans.next; trans = null; n(); } break;
     case 'battle': updateBattle(dt); break;
