@@ -71,6 +71,55 @@ try {
   }
 } catch (e) {}
 
+
+/* ---------------- 插画资源（立绘 / 背景），加载失败时回退到程序绘制 ---------------- */
+const ART_NAMES = ['lin_normal', 'lin_happy', 'lin_sad', 'lin_angry', 'lin_surprise', 'lin_determined', 'su_normal', 'su_happy', 'su_sad', 'su_angry', 'su_surprise', 'su_shy',
+  'elder_normal', 'granny_normal', 'inn_normal', 'shop_normal', 'kid_normal', 'man_normal', 'wood_normal', 'foxking', 'title', 'bf_forest', 'bf_cave', 'bf_boss', 'ending',
+  'lin_b_ready', 'lin_b_attack', 'lin_b_cast', 'lin_b_hurt', 'su_b_ready', 'su_b_attack', 'su_b_cast', 'su_b_hurt', 'e_bamboo', 'e_spider', 'e_ape', 'e_bat', 'e_skeleton', 'e_fox'];
+const ART = {};
+ART_NAMES.forEach(n => { const im = new Image(); im.decoding = 'async'; im.onload = () => { ART[n] = im; if (n.startsWith('bf_')) bgCache = null; if (n === 'title') titleBg = null; }; im.src = 'art/' + n + '.webp'; });
+const FACE = {"lin":{"x":0.36,"y":0.235,"s":0.27},"su":{"x":0.49,"y":0.235,"s":0.27},"elder":{"x":0.48,"y":0.23,"s":0.28},"granny":{"x":0.39,"y":0.195,"s":0.27},"inn":{"x":0.44,"y":0.245,"s":0.27},"shop":{"x":0.42,"y":0.225,"s":0.27},"kid":{"x":0.39,"y":0.31,"s":0.28},"man":{"x":0.44,"y":0.245,"s":0.27},"wood":{"x":0.46,"y":0.285,"s":0.27},"def":{"x":0.5,"y":0.22,"s":0.27}};
+function artBust(who, ex) {
+  let e = (ex || 'normal').replace(/_[ob]$/, '');
+  const alias = { hurt: 'sad', closed: 'sad', shy: who === 'su' ? 'shy' : 'happy', determined: who === 'lin' ? 'determined' : 'normal' };
+  e = alias[e] || e;
+  return ART[who + '_' + e] || ART[who + '_normal'] || null;
+}
+function faceCrop(img, who, x, y, w, h, zoom = 1) {
+  const f = FACE[who] || FACE.def, sz = f.s * img.height / zoom;
+  ctx.drawImage(img, f.x * img.width - sz / 2, f.y * img.height - sz / 2, sz, sz, x, y, w, h);
+}
+const EIMG_H = { bamboo: 98, spider: 64, ape: 104, bat: 74, skeleton: 104, fox: 72, foxking: 140 };
+function enemyImg(type) { return type === 'foxking' ? ART.foxking : ART['e_' + type]; }
+function drawEnemyImg(g, type, img, t) {
+  let h = EIMG_H[type] || 90, w = h * img.width / img.height;
+  if (w > 190) { h *= 190 / w; w = 190; }
+  g.save();
+  if (type === 'bat') { g.translate(0, -38 + Math.sin(t * 4) * 5); g.scale(1, 1 + Math.sin(t * 14) * .05); g.translate(0, h / 2); }
+  if (type === 'bamboo') g.rotate(Math.sin(t * 2) * .05);
+  g.drawImage(img, -w / 2, -h, w, h);
+  g.restore();
+}
+function partyImg(p, pose) {
+  const k = { swing2: 'attack', cast: 'cast', hurt: 'hurt', dead: 'hurt' }[pose] || 'ready';
+  return ART[`${p.id}_b_${k}`] || null;
+}
+function drawPartyImg(p, pose, x, y, o) {
+  const img = partyImg(p, pose), base = ART[`${p.id}_b_ready`];
+  if (!img || !base) return false;
+  const sc = 128 / base.height, w = img.width * sc, h = img.height * sc;
+  ctx.fillStyle = 'rgba(0,0,0,.3)'; ell(ctx, x, y, 26, 7);
+  ctx.save(); ctx.globalAlpha *= o.alpha ?? 1;
+  ctx.translate(x, y - (o.lift || 0));
+  if (pose === 'dead') { ctx.rotate(-Math.PI / 2); ctx.translate(h * .5 - 10, 10); ctx.globalAlpha *= .75; ctx.filter = 'grayscale(.7)'; }
+  else if (o.moving) ctx.rotate(-.06 + Math.sin(T * 20) * .03);
+  const ox = pose === 'swing2' ? -w * .12 : 0;
+  ctx.drawImage(img, -w / 2 + ox, -h, w, h);
+  ctx.restore();
+  return true;
+}
+function coverDraw(g, img, w, h, fy = .5) { const k = Math.max(w / img.width, h / img.height), dw = img.width * k, dh = img.height * k; g.drawImage(img, (w - dw) / 2, (h - dh) * fy, dw, dh); }
+
 /* =========================================================
    数据
    ========================================================= */
@@ -1299,13 +1348,13 @@ function drawEnemyRaw(g, type, t) {
 let tmpA = null, tmpB = null;
 function drawEnemy(g, type, x, y, t, s = 1, o = {}) {
   if (!o.noShadow) { g.fillStyle = 'rgba(0,0,0,.3)'; ell(g, x, y, 22 * s, 6 * s); }
-  if (type === 'foxking') { g.save(); g.globalCompositeOperation = 'lighter'; const gr = g.createRadialGradient(x, y - 50 * s, 10, x, y - 50 * s, 85 * s); gr.addColorStop(0, `rgba(255,90,40,${.3 + Math.sin(t * 3) * .08})`); gr.addColorStop(1, 'rgba(255,60,20,0)'); g.fillStyle = gr; g.fillRect(x - 90 * s, y - 140 * s, 180 * s, 180 * s); g.restore(); }
-  const bw = 130 * s, bh = 150 * s, ax = 65 * s, ay = 140 * s;
+  if (type === 'foxking' && !ART.foxking) { g.save(); g.globalCompositeOperation = 'lighter'; const gr = g.createRadialGradient(x, y - 50 * s, 10, x, y - 50 * s, 85 * s); gr.addColorStop(0, `rgba(255,90,40,${.3 + Math.sin(t * 3) * .08})`); gr.addColorStop(1, 'rgba(255,60,20,0)'); g.fillStyle = gr; g.fillRect(x - 90 * s, y - 140 * s, 180 * s, 180 * s); g.restore(); }
+  const bw = 200 * s, bh = 180 * s, ax = 100 * s, ay = 168 * s;
   const rs = RS, cw = Math.ceil((bw + 4) * rs), ch = Math.ceil((bh + 4) * rs);
   if (!tmpA || tmpA.width < cw || tmpA.height < ch) { const nw = Math.max(cw, tmpA ? tmpA.width : 0), nh = Math.max(ch, tmpA ? tmpA.height : 0); tmpA = makeCanvas(nw, nh); tmpB = makeCanvas(nw, nh); }
   const a = tmpA.getContext('2d'), b = tmpB.getContext('2d');
   a.setTransform(1, 0, 0, 1, 0, 0); a.clearRect(0, 0, cw + 4, ch + 4);
-  a.setTransform(rs, 0, 0, rs, (ax + 2) * rs, (ay + 2) * rs); const ln = o.lean || 0, br = o.breath || 0; a.rotate(ln * -.14); a.scale(s * (1 - ln * .1 - br * .015), s * (1 + ln * .08 + br * .025)); drawEnemyRaw(a, type, t);
+  a.setTransform(rs, 0, 0, rs, (ax + 2) * rs, (ay + 2) * rs); const ln = o.lean || 0, br = o.breath || 0; a.rotate(ln * -.14); a.scale(s * (1 - ln * .1 - br * .015), s * (1 + ln * .08 + br * .025)); { const ei = enemyImg(type); if (ei) drawEnemyImg(a, type, ei, t); else drawEnemyRaw(a, type, t); }
   if (o.white > 0) { a.setTransform(1, 0, 0, 1, 0, 0); a.globalCompositeOperation = 'source-atop'; a.fillStyle = `rgba(255,255,255,${Math.min(1, o.white)})`; a.fillRect(0, 0, cw, ch); a.globalCompositeOperation = 'source-over'; }
   b.setTransform(1, 0, 0, 1, 0, 0); b.globalCompositeOperation = 'source-over'; b.clearRect(0, 0, cw + 4, ch + 4);
   const k = Math.max(1, Math.round(rs * .9));
@@ -1819,6 +1868,7 @@ function bar(x, y, w, h, v, max, c1, c2) {
 function drawPortrait(look, x, y, w, h, s, headY) {
   ctx.save(); rr(ctx, x, y, w, h, 6); ctx.fillStyle = 'rgba(255,245,225,.07)'; ctx.fill(); ctx.clip();
   if (look && look.startsWith('E:')) drawEnemy(ctx, look.slice(2), x + w / 2 - 14, y + h + 30, T, 1.6, { noShadow: true });
+  else if (artBust(look, s)) faceCrop(artBust(look, s), look, x, y, w, h);
   else if (BUSTS[look]) { const s2 = w / 150; drawBust(bustSprite(look, s || 'normal'), x + w / 2, y + h * .56 + 183 * s2, s2); }
   else blitChar(ctx, x + w / 2, y + (headY ?? h * .5) + 31 * s, 0, 0, look, s, { noShadow: true });
   ctx.restore();
@@ -2218,7 +2268,7 @@ function drawHUD() {
   G.party.forEach((p, i) => {
     const x = 10 + i * 170, y = 10;
     ctx.save(); rr(ctx, x, y, 162, 48, 8); ctx.fillStyle = 'rgba(12,14,20,.68)'; ctx.fill(); ctx.strokeStyle = 'rgba(214,180,106,.55)'; ctx.lineWidth = 1; ctx.stroke(); ctx.restore();
-    ctx.save(); ctx.beginPath(); ctx.arc(x + 24, y + 24, 18, 0, 7); ctx.fillStyle = 'rgba(255,245,225,.12)'; ctx.fill(); ctx.clip(); { const s2 = .29; drawBust(bustSprite(p.look, p.hp < p.mhp * .3 ? 'sad' : 'normal'), x + 24, y + 26 + 183 * s2, s2); } ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.arc(x + 24, y + 24, 18, 0, 7); ctx.fillStyle = 'rgba(255,245,225,.12)'; ctx.fill(); ctx.clip(); { const ex = p.hp < p.mhp * .3 ? 'sad' : 'normal', im = artBust(p.look, ex); if (im) faceCrop(im, p.look, x + 5, y + 5, 38, 38); else { const s2 = .29; drawBust(bustSprite(p.look, ex), x + 24, y + 26 + 183 * s2, s2); } } ctx.restore();
     ctx.strokeStyle = '#d6b46a'; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(x + 24, y + 24, 18, 0, 7); ctx.stroke();
     text(p.name, x + 48, y + 20, 13, '#f3ead8', 'left', FB, true); text('Lv' + p.lv, x + 154, y + 20, 11, '#e8c77a', 'right');
     if (p.poison > 0) text('毒', x + 118, y + 20, 11, '#b07ae8', 'center', FB, true);
@@ -2251,7 +2301,10 @@ function drawDialog() {
   if (!isNarr) {
     const k = easeOut(Math.min(1, (d.t || 0) * 5));
     ctx.save(); ctx.globalAlpha = k;
-    if (d.look && d.look.startsWith('E:')) drawEnemy(ctx, d.look.slice(2), bx + 86 - (1 - k) * 40, by + bh - 8, T, 2.3, { noShadow: true });
+    const dim2 = d.look && !d.look.startsWith('E:') ? artBust(d.look, d.ex) : null;
+    if (d.look === 'E:foxking' && ART.foxking) { const hg = 250, wd = hg * ART.foxking.width / ART.foxking.height; ctx.drawImage(ART.foxking, bx + 100 - wd / 2 - (1 - k) * 50, H - 6 - hg, wd, hg); }
+    else if (d.look && d.look.startsWith('E:')) drawEnemy(ctx, d.look.slice(2), bx + 86 - (1 - k) * 40, by + bh - 8, T, 2.3, { noShadow: true });
+    else if (dim2) { const hg = 330, wd = hg * dim2.width / dim2.height, br = Math.sin(T * 1.6) * .004; ctx.drawImage(dim2, bx + 110 - wd / 2 - (1 - k) * 50, H + 14 - hg * (1 + br), wd, hg * (1 + br)); }
     else if (BUSTS[d.look]) {
       let ex = d.ex || 'normal';
       const typing = d.shown < d.text.length;
@@ -2382,7 +2435,7 @@ function startBattle(ids, opts = {}) {
   bgCache = null;
   state = 'trans'; trans = { t: 0, dur: .9, next: () => { state = 'battle'; playSong(opts.boss ? 'boss' : 'battle'); runCo(battleMain()); } };
 }
-function partyPos(i) { return { x: W - 180 + i * 64, y: 198 + i * 80 }; }
+function partyPos(i) { return { x: W - 205 + i * 92, y: 205 + i * 82 }; }
 function posOf(c) { if (c.isEnemy) return { x: c.bx, y: c.by }; return partyPos(G.party.indexOf(c)); }
 const aliveEn = () => battle.en.filter(e => e.alive);
 const aliveParty = () => G.party.filter(p => p.hp > 0);
@@ -2621,6 +2674,8 @@ function updateBattle(dt) {
 }
 function buildBattleBg(type) {
   const c = makeCanvas(W * RS, 340 * RS), g = c.getContext('2d'); g.scale(RS, RS); const R = seeded(type.length * 999 + 7);
+  const bimg = ART[{ forest: 'bf_forest', cave: 'bf_cave', boss: 'bf_boss' }[type]];
+  if (bimg) { coverDraw(g, bimg, W, 340, .72); const sh = g.createLinearGradient(0, 220, 0, 340); sh.addColorStop(0, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.35)'); g.fillStyle = sh; g.fillRect(0, 220, W, 120); return c; }
   if (type === 'forest') {
     let gr = g.createLinearGradient(0, 0, 0, 340); gr.addColorStop(0, '#c7dccb'); gr.addColorStop(.45, '#ebe3c6'); gr.addColorStop(1, '#b9c69a'); g.fillStyle = gr; g.fillRect(0, 0, W, 340);
     const sg = g.createRadialGradient(W * .72, 56, 5, W * .72, 56, 90); sg.addColorStop(0, 'rgba(255,250,230,.9)'); sg.addColorStop(1, 'rgba(255,250,230,0)'); g.fillStyle = sg; g.fillRect(0, 0, W, 200);
@@ -2676,7 +2731,8 @@ function drawBattle() {
     const moving = Math.abs(p.ox) > 3 && !p.pose;
     const fr = moving ? [1, 0, 3, 0][Math.floor(T * 10) % 4] : 0;
     const pose = p.hp <= 0 ? 'dead' : (p.pose || (p.cast > 0 ? 'cast' : (p.id === 'lin' ? 'ready' : 'idle')));
-    blitChar(ctx, pp.x + p.ox + (p.kb || 0), pp.y + p.oy, 1, fr, p.look, 2, { pose, ko: p.hp <= 0, alpha: p.flash > 0 && Math.floor(p.flash * 30) % 2 ? .55 : 1, lift: moving ? 0 : Math.sin(T * 2.4 + i) * .8 });
+    const po = { pose, ko: p.hp <= 0, alpha: p.flash > 0 && Math.floor(p.flash * 30) % 2 ? .55 : 1, lift: moving ? Math.abs(Math.sin(T * 20)) * 3 : Math.sin(T * 2.4 + i) * .8, moving };
+    if (!drawPartyImg(p, pose, pp.x + p.ox + (p.kb || 0), pp.y + p.oy, po)) blitChar(ctx, pp.x + p.ox + (p.kb || 0), pp.y + p.oy, 1, fr, p.look, 2, po);
     if (p.poison > 0 && p.hp > 0) { ctx.fillStyle = `rgba(170,110,230,${.5 + Math.sin(T * 5) * .2})`; for (let k = 0; k < 3; k++) circ(ctx, pp.x - 14 + k * 12 + Math.sin(T * 3 + k) * 3, pp.y - 92 - ((T * 20 + k * 10) % 20), 2.5); }
   } }); });
   draws.sort((a, c) => a.y - c.y).forEach(d => d.f());
@@ -2712,7 +2768,10 @@ function drawCutin(c) {
   for (let i = 0; i < 26; i++) { const yy = y0 + ((i * 37) % (y1 - y0)), x = W - ((T * 1500 + i * 173) % (W + 300)); line(ctx, x, yy, x + 90 + (i % 3) * 40, yy - 8); }
   ctx.globalCompositeOperation = 'source-over';
   const e = easeOut(Math.min(1, k * 4)), bxp = lerp(-160, W * .25, e);
-  if (c.who.startsWith('E:')) drawEnemy(ctx, c.who.slice(2), bxp, y1 + 30, T, 2.8, { noShadow: true });
+  const cim = c.who.startsWith('E:') ? (c.who === 'E:foxking' ? ART.foxking : null) : artBust(c.who, c.ex);
+  if (cim && c.who.startsWith('E:')) { const hg = 230, wd = hg * cim.width / cim.height; ctx.drawImage(cim, bxp - wd / 2, 80, wd, hg); }
+  else if (cim) faceCrop(cim, c.who, bxp - 130, 190 - 130, 260, 260, .62);
+  else if (c.who.startsWith('E:')) drawEnemy(ctx, c.who.slice(2), bxp, y1 + 30, T, 2.8, { noShadow: true });
   else if (BUSTS[c.who]) drawBust(bustSprite(c.who, c.ex), bxp, 192 + 183 * .95, .95);
   ctx.restore();
   ctx.strokeStyle = '#d6b46a'; ctx.lineWidth = 2; line(ctx, 0, y0 + sk, W, y0); line(ctx, 0, y1, W, y1 - sk);
@@ -2851,6 +2910,7 @@ function drawTrans() {
 let titleBg = null;
 function buildTitleBg() {
   const c = makeCanvas(W * RS, H * RS), g = c.getContext('2d'); g.scale(RS, RS); const R = seeded(2024);
+  if (ART.title) { coverDraw(g, ART.title, W, H, .5); const lg = g.createLinearGradient(0, 0, W * .6, 0); lg.addColorStop(0, 'rgba(8,10,16,.62)'); lg.addColorStop(1, 'rgba(8,10,16,0)'); g.fillStyle = lg; g.fillRect(0, 0, W, H); return c; }
   let gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#1b2333'); gr.addColorStop(.5, '#3a4458'); gr.addColorStop(.75, '#8a8a8a'); gr.addColorStop(1, '#c9c2b0'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
   const mg = g.createRadialGradient(W * .74, 96, 10, W * .74, 96, 140); mg.addColorStop(0, 'rgba(255,248,225,.35)'); mg.addColorStop(1, 'rgba(255,248,225,0)'); g.fillStyle = mg; g.fillRect(0, 0, W, 300);
   g.fillStyle = '#f6efdc'; circ(g, W * .74, 96, 34); g.fillStyle = 'rgba(200,190,170,.25)'; circ(g, W * .74 - 8, 90, 7); circ(g, W * .74 + 10, 104, 5);
@@ -2878,7 +2938,7 @@ function drawTitle() {
   ctx.drawImage(titleBg, 0, 0, W, H);
   for (let i = 0; i < 5; i++) { const x = ((T * (8 + i * 3) + i * 300) % (W + 400)) - 200, y = 200 + i * 38; ctx.fillStyle = `rgba(210,215,225,${.06 + i * .015})`; ell(ctx, x, y, 200, 14); ell(ctx, x + 80, y - 8, 120, 10); }
   cranes.forEach(c => { c.x += c.sp * DT; if (c.x > W + 60) c.x = -60; const f = Math.sin(T * 4 + c.y) * 6 * c.s; ctx.save(); ctx.translate(c.x, c.y + Math.sin(T + c.y) * 4); ctx.scale(c.s, c.s); ctx.strokeStyle = 'rgba(20,24,32,.85)'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(-14, -f); ctx.quadraticCurveTo(-6, -2, 0, 0); ctx.quadraticCurveTo(6, -2, 14, -f); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(10, 1); ctx.stroke(); ctx.restore(); });
-  ctx.save(); ctx.globalAlpha = .92; blitChar(ctx, W * .855, H - 60, 3, 0, 'lin', 1.6, { noShadow: true }); blitChar(ctx, W * .895, H - 58, 3, 0, 'su', 1.6, { noShadow: true }); ctx.restore();
+  if (!ART.title) { ctx.save(); ctx.globalAlpha = .92; blitChar(ctx, W * .855, H - 60, 3, 0, 'lin', 1.6, { noShadow: true }); blitChar(ctx, W * .895, H - 58, 3, 0, 'su', 1.6, { noShadow: true }); ctx.restore(); }
   updateAmb(DT, 'title'); drawAmb('petal');
   const tx = W * .3, ty = 130;
   ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 16; text('剑心问道', tx, ty + 30, 84, '#f3ead8', 'center', FT); ctx.restore();
@@ -2894,11 +2954,12 @@ function drawTitle() {
 function drawEnding() {
   ctx.fillStyle = '#0b0d12'; ctx.fillRect(0, 0, W, H);
   if (!titleBg || titleBg.width !== Math.ceil(W * RS)) titleBg = buildTitleBg();
-  ctx.save(); ctx.globalAlpha = .55; ctx.drawImage(titleBg, 0, 0, W, H); ctx.restore();
-  updateAmb(DT, 'title'); drawAmb('petal');
   const k = Math.min(1, endT / 2);
+  if (ART.ending) { ctx.save(); ctx.globalAlpha = k; coverDraw(ctx, ART.ending, W, H, .55); const eg = ctx.createLinearGradient(0, 0, 0, H); eg.addColorStop(0, 'rgba(8,10,16,.55)'); eg.addColorStop(.35, 'rgba(8,10,16,0)'); eg.addColorStop(.7, 'rgba(8,10,16,0)'); eg.addColorStop(1, 'rgba(8,10,16,.7)'); ctx.fillStyle = eg; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+  else { ctx.save(); ctx.globalAlpha = .55; ctx.drawImage(titleBg, 0, 0, W, H); ctx.restore(); }
+  updateAmb(DT, 'title'); drawAmb('petal');
   ctx.save(); ctx.globalAlpha = k;
-  blitChar(ctx, W / 2 - 26, 300, 3, 0, 'lin', 2.4); blitChar(ctx, W / 2 + 26, 300, 3, 0, 'su', 2.4);
+  if (!ART.ending) { blitChar(ctx, W / 2 - 26, 300, 3, 0, 'lin', 2.4); blitChar(ctx, W / 2 + 26, 300, 3, 0, 'su', 2.4); }
   text('剑心问道', W / 2, 92, 60, '#f3ead8', 'center', FT); text('· 终 ·', W / 2, 130, 22, '#d6b46a', 'center', FT);
   ['妖祸平息，青石镇重归安宁。', '而两位少年侠客的故事，才刚刚开始……'].forEach((l, i) => { ctx.globalAlpha = clamp((endT - 1.5 - i * 1.2) / 1, 0, 1); text(l, W / 2, 360 + i * 28, 17, '#e6dcc6', 'center'); });
   ctx.restore();
